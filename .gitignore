@@ -1,5 +1,123 @@
-# Roundtable system files
-user_data/roundtable/*
+# Freqtrade rules
+config*.json
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+logfile.txt
+user_data/*
+!user_data/strategy/sample_strategy.py
+!user_data/strategies/RoundTableStrategy.py
+!user_data/roundtable/
 !user_data/roundtable/README.md
 !user_data/roundtable/engine.py
-!user_data/strategies/RoundTableStrategy.py
+!user_data/notebooks
+!user_data/models
+!user_data/freqaimodels
+user_data/freqaimodels/*
+user_data/models/*
+user_data/notebooks/*
+freqtrade-plot.html
+freqtrade-profit-plot.html
+freqtrade/rpc/api_server/ui/*
+build_helpers/ta-lib/*
+
+# Macos related
+.DS_Store
+
+# Byte-compiled / optimized Python files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff
+local_settings.py
+
+# Flask stuff
+instance/
+.webassets-cache
+
+# Scrapy
+.scrapy
+
+# memray
+memray-*
+
+# Sphinx and Mkdocs
+docs/_build/
+site/
+
+target/
+
+# AI Agents
+*.local.md
+.cursor/
+.codex/
+.claude/*.local.json
+.claude/**/*.log
+
+# Jupyter Notebook
+*.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Local credentials and environments
+.env
+.venv
+.idea
+.vscode
+.*_cache/
+
+# Keep example configurations tracked
+!config_examples/config_binance.example.json
+!config_examples/config_full.example.json
+!config_examples/config_kraken.example.json
+!config_examples/config_freqai.example.json
+!config_examples/config_paper_roundtable.json
+
+docker-compose-*.yml

@@ -96,7 +96,9 @@ def evaluate(row: Any, *, min_confidence: float = 0.67) -> RoundtableDecision:
     one = _analyst_one(row)
     two = _analyst_two(row)
     same_direction = one.direction == two.direction and one.direction in {"long", "short"}
-    confidence = (one.score + two.score) / 2.0
+    # Use magnitude for both directions. Signed scores would make every short
+    # setup fail the confidence check even when both analysts agree.
+    confidence = (abs(one.score) + abs(two.score)) / 2.0
     volatility_ok = 0.005 <= float(row.atr_pct) <= 0.08
     approved = same_direction and confidence >= min_confidence and volatility_ok
     verification = Verification(
