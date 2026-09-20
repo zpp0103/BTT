@@ -4,13 +4,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from crypto_quant_ai.backend.api.app import app
-from crypto_quant_ai.backend.core.models import BrainAnalysis, FinalDecision, MarketData, RiskAssessment
+from crypto_quant_ai.backend.core.config import settings
+from crypto_quant_ai.backend.core.models import BrainAnalysis, MarketData, RiskAssessment
 from crypto_quant_ai.backend.decision.decision_engine import DecisionEngine
 from crypto_quant_ai.backend.execution.execution import ExecutionService
 
 
 def test_live_trading_default_false() -> None:
-    assert True
+    assert settings.live_trading is False
 
 
 def test_market_data_model_creates() -> None:
