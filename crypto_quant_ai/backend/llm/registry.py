@@ -1,43 +1,30 @@
-"""Stage 10 - LLM adapter registry (BrainRegistry).
-
-Independent of the Stage 1-8 brain decision registry. By default only the local
-stub adapter is registered. Online adapters must be registered explicitly.
-"""
 from __future__ import annotations
 
-from typing import Any
-
-from .adapters import LocalStubAdapter
+from .providers import LocalStubProvider
 
 
-class BrainRegistry:
+class ProviderRegistry:
     def __init__(self) -> None:
-        self._adapters: dict[str, type] = {}
-        self.register("local_stub", LocalStubAdapter)
+        self._providers: dict[str, type] = {}
+        self._register_defaults()
 
-    def register(self, name: str, adapter_cls: type) -> None:
-        self._adapters[name] = adapter_cls
+    def _register_defaults(self) -> None:
+        # Only the offline local stub is registered by default. The online
+        # provider is a non-network gated stub and must be registered explicitly.
+        self.register("local_stub", LocalStubProvider)
 
-    def get(self, name: str) -> Any:
-        if name not in self._adapters:
-            raise KeyError(f"unknown LLM adapter: {name}")
-        return self._adapters[name]
+    def register(self, name: str, provider_cls: type) -> None:
+        self._providers[name] = provider_cls
 
-    def list_adapters(self) -> list[str]:
-        return sorted(self._adapters.keys())
+    def get(self, name: str) -> type | None:
+        return self._providers.get(name)
 
-
-_REGISTRY = BrainRegistry()
+    def names(self) -> list[str]:
+        return list(self._providers.keys())
 
 
-def get_registry() -> BrainRegistry:
+_REGISTRY = ProviderRegistry()
+
+
+def get_provider_registry() -> ProviderRegistry:
     return _REGISTRY
-
-
-def register_adapter(name: str, adapter_cls: type) -> None:
-    get_registry().register(name, adapter_cls)
-
-
-def build_adapter(name: str, **kwargs: Any) -> Any:
-    cls = get_registry().get(name)
-    return cls(**kwargs)

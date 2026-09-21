@@ -1,43 +1,49 @@
-"""Stage 10 - LLM Adapter Layer: configuration + response types.
-
-Paper-only, local-first. The online (networked) adapter is a gated stub that
-refuses to perform any network call in this environment (no network, no venue,
-no credentials). All network code paths are opt-in and disabled by default.
-"""
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+
 from typing import Any
 
 
 def _live_guard() -> None:
+    """Refuse to operate when real trading is enabled (paper-only layer)."""
     if os.environ.get("LIVE_TRADING", "false").lower() == "true":
-        raise RuntimeError("Stage 10 LLM layer requires LIVE_TRADING=false (paper only).")
+        raise RuntimeError(
+            "LIVE_TRADING is enabled; the LLM adapter layer is paper-only and "
+            "refuses to initialize or run."
+        )
 
 
-@dataclass(frozen=True)
+@dataclass
 class LLMConfig:
+    """Configuration for an LLM-backed brain. Safe by default."""
     enabled: bool = False
-    adapter_name: str = "local_stub"
+    provider_name: str = "local_stub"
     model: str = "local-stub"
-    prompt_template: str = (
-        "You are a conservative crypto analyst. Given the market snapshot, "
-        "respond ONLY with JSON: {\"decision\": \"NO_TRADE\", \"confidence\": 0.0, "
-        "\"reasoning\": \"...\"} where decision is one of BUY/SELL/NO_TRADE."
-    )
-    timeout_s: float = 5.0
-    max_retries: int = 1
+    fallback_decision: str = "NO_TRADE"
     allow_active_decisions: bool = False
     require_stop_loss_for_active: bool = True
-    fallback_decision: str = "NO_TRADE"
+    timeout_s: float = 5.0
+    temperature: float = 0.0
+    extra_prompt: str = ""
 
 
-@dataclass(frozen=True)
+@dataclass
 class LLMResponse:
-    raw: str
+    """Raw output returned by a provider; no execution side effects."""
+    text: str
+    provider: str
+    model: str
+    latency_s: float = 0.0
+    error: str | None = None
+
+
+@dataclass
+class ParsedSuggestion:
+    """Structured suggestion extracted from a provider response."""
     decision: str
     confidence: float
     reasoning: str
-    source: str
-    error: str = ""
+    stop_loss: float | None = None
+    warnings: list[str] = field(default_factory=list)

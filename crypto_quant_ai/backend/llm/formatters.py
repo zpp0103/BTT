@@ -1,34 +1,32 @@
-"""Stage 10 - formatters: LLM contribution report (explainability)."""
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from crypto_quant_ai.backend.decision.brain_orchestrator import OrchestratorReport
 
 
-def render_llm_contribution(report: Any) -> str:
-    """Render the LLM brain's contribution within an OrchestratorReport.
-
-    Shows which brains voted, what the LLM suggested, whether it was adopted,
-    and the fallback reason. Always safe and read-only.
-    """
-    lines = ["## LLM Contribution", ""]
+def render_llm_contribution(report: "OrchestratorReport") -> str:
+    """Explain the LLM brain's contribution to an orchestrator report."""
     llm = None
-    others = []
-    for r in getattr(report, "brain_results", []) or []:
+    for r in report.brain_results:
         if r.brain_name == "llm":
             llm = r
-        else:
-            others.append(r.brain_name)
-    lines.append(f"- Other brains: {', '.join(others) or 'none'}")
+            break
     if llm is None:
-        lines.append("- LLM brain: not injected (disabled by default).")
-        return "\n".join(lines)
+        return "## LLM contribution\n\nNo LLM brain was present in this report."
     a = llm.analysis
-    lines.append(f"- LLM decision: **{a.decision}** (confidence {a.confidence:.2f})")
-    lines.append(f"- LLM reasoning: {a.reasoning}")
+    adopted = "yes" if report.final_decision.decision == a.decision else "no"
+    lines = [
+        "## LLM contribution",
+        "",
+        "- Brain: `llm`",
+        f"- Decision: `{a.decision}` (confidence {a.confidence:.2f})",
+        f"- Adopted into final: {adopted}",
+        f"- Reasoning: {a.reasoning or '(none)'}",
+    ]
     if a.warnings:
-        lines.append(f"- LLM warnings: {', '.join(a.warnings)}")
+        lines.append("- Warnings:")
+        for w in a.warnings:
+            lines.append(f"  - {w}")
     return "\n".join(lines)
-
-
-def explain_llm_decision(report: Any) -> str:
-    return render_llm_contribution(report)
