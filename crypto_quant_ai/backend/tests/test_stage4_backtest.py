@@ -111,22 +111,22 @@ class TestBacktestConfig:
 
     def test_negative_initial_cash_rejected(self):
         from crypto_quant_ai.backend.backtest.types import BacktestConfig
-        with pytest.raises(ValueError, match="initial_cash must be positive"):
+        with pytest.raises(ValueError, match="initial_cash must be a finite positive"):
             BacktestConfig(initial_cash=-1000)
 
     def test_zero_initial_cash_rejected(self):
         from crypto_quant_ai.backend.backtest.types import BacktestConfig
-        with pytest.raises(ValueError, match="initial_cash must be positive"):
+        with pytest.raises(ValueError, match="initial_cash must be a finite positive"):
             BacktestConfig(initial_cash=0)
 
     def test_negative_fee_rejected(self):
         from crypto_quant_ai.backend.backtest.types import BacktestConfig
-        with pytest.raises(ValueError, match="fee_bps must be non-negative"):
+        with pytest.raises(ValueError, match="fee_bps must be a finite non-negative"):
             BacktestConfig(fee_bps=-5.0)
 
     def test_negative_slippage_rejected(self):
         from crypto_quant_ai.backend.backtest.types import BacktestConfig
-        with pytest.raises(ValueError, match="slippage_bps must be non-negative"):
+        with pytest.raises(ValueError, match="slippage_bps must be a finite non-negative"):
             BacktestConfig(slippage_bps=-1.0)
 
     def test_paper_trading_false_rejected(self):
@@ -176,7 +176,7 @@ class TestBacktestTrade:
     def test_zero_quantity_rejected(self):
         from crypto_quant_ai.backend.backtest.types import BacktestTrade, TradeAction
         # BUY with zero quantity should be rejected
-        with pytest.raises(ValueError, match="quantity must be positive"):
+        with pytest.raises(ValueError, match="quantity must be a finite positive"):
             BacktestTrade(
                 trade_id="t_0001",
                 timestamp=_ts(0),
@@ -209,7 +209,7 @@ class TestBacktestTrade:
 
     def test_negative_price_rejected(self):
         from crypto_quant_ai.backend.backtest.types import BacktestTrade, TradeAction
-        with pytest.raises(ValueError, match="price must be positive"):
+        with pytest.raises(ValueError, match="price must be a finite positive"):
             BacktestTrade(
                 trade_id="t_0001",
                 timestamp=_ts(0),
@@ -930,7 +930,7 @@ class TestCandleSignal:
     def test_buy_zero_quantity_rejected(self):
         from crypto_quant_ai.backend.backtest.simulator import CandleSignal
         from crypto_quant_ai.backend.backtest.types import TradeAction
-        with pytest.raises(ValueError, match="quantity must be positive"):
+        with pytest.raises(ValueError, match="quantity must be a finite positive"):
             CandleSignal(
                 timestamp=_ts(0),
                 symbol="BTC",
@@ -942,10 +942,12 @@ class TestCandleSignal:
     def test_negative_price_rejected(self):
         from crypto_quant_ai.backend.backtest.simulator import CandleSignal
         from crypto_quant_ai.backend.backtest.types import TradeAction
-        with pytest.raises(ValueError, match="price must be positive"):
+        with pytest.raises(ValueError, match=r"price must be a finite positive(?: number for BUY/SELL)?"):
             CandleSignal(
                 timestamp=_ts(0),
                 symbol="BTC",
-                action=TradeAction.HOLD,
-                price=-1,
+                action=TradeAction.BUY,
+                price=-100,
+                quantity=1.0,
+                reason="test",
             )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
@@ -274,7 +275,7 @@ class PaperExecutor:
 
         # ── Determine quantity ─────────────────────────────────────────
         try:
-            quantity = self._calc_quantity(decision, price)
+            quantity = self._calc_quantity(decision, price, report)
         except ValueError as exc:
             if self.audit_log is not None:
                 self.audit_log.append(
@@ -374,17 +375,46 @@ class PaperExecutor:
     # Internals
     # ------------------------------------------------------------------
 
-    def _calc_quantity(self, decision, price: float) -> float:
+    def _calc_quantity(
+        self,
+        decision: FinalDecision,
+        price: float,
+        report: "OrchestratorReport | None" = None,
+    ) -> float:
         """
         Resolve quantity in base units.
 
-        If ``decision.position_size > 0`` it is treated as the quote-currency
-        notional (e.g. $5,000 USDT).  Otherwise fall back to
-        ``default_fraction`` of current cash.
+        Priority:
+        1. report.quantity  — explicit float quantity passed by backtest simulators
+        2. decision._backtest_qty  — legacy override (read + cleared to avoid leaking)
+        3. position_size / price  (quote-currency notional)
+        4. default_fraction * cash / price
         """
-        if decision.position_size > 0:
-            # position_size is a quote-currency notional
-            notional = float(decision.position_size)
+        # Priority 1: explicit quantity via OrchestratorReport.quantity
+        # Guard: report.quantity must be a real number (not MagicMock, not None)
+        qty = getattr(report, "quantity", None)
+        if isinstance(qty, (int, float)) and math.isfinite(qty) and qty > 0:
+            return round(qty, 8)
+
+        # Priority 2: _backtest_qty override (read + clear to avoid leaking)
+        qty_override = getattr(decision, "_backtest_qty", None)
+        if isinstance(qty_override, (int, float)) and math.isfinite(qty_override):
+            qty = float(qty_override)
+            delattr(decision, "_backtest_qty")  # prevent cross-test contamination
+            if qty <= 0:
+                raise ValueError(f"Backtest qty override {qty} must be positive")
+            return round(qty, 8)
+
+        # Safe numeric extraction for position_size (handles MagicMock in tests).
+        # MagicMock final_decision: attribute is set on the mock so value is retrievable.
+        # Real FinalDecision: position_size is a real field.
+        if hasattr(report, "final_decision"):
+            _dec = getattr(report, "final_decision", None)
+            ps = getattr(_dec, "position_size", None) if _dec else None
+        else:
+            ps = getattr(decision, "position_size", None)
+        if isinstance(ps, (int, float)) and math.isfinite(ps) and ps > 0:
+            notional = float(ps)
         else:
             notional = self.account.cash * self.default_fraction
 
