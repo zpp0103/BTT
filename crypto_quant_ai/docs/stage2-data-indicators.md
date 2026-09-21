@@ -52,5 +52,5 @@ snapshots = calculate_indicators(validated, sma_period=3)
 ## Testing
 
 ```bash
-PYTHONPATH=. pytest -q crypto_quant_ai/backend/tests/test_stage2_data.py
+PYTHONPATH=. python -m pytest -q crypto_quant_ai/backend/tests/test_stage2_data.py
 ```
