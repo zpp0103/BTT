@@ -28,6 +28,9 @@ class OrchestratorReport:
     brain_results: list[BrainResult]
     final_decision: FinalDecision
     total_latency_ms: float | None = None
+    # Optional quantity override for backtest simulators that bypass the
+    # default fraction / position_size → quantity derivation in PaperExecutor.
+    quantity: float | None = None
 
     @property
     def unanimous_buy(self) -> bool:
