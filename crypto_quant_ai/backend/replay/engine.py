@@ -25,13 +25,43 @@ from .types import (
     canonical_hash,
 )
 
+# ---------------------------------------------------------------------------
+# Safety guard (third layer; types.py and config.py also guard at import time).
+# Replay is paper-only: it never submits an order or connects to any venue.
+# ---------------------------------------------------------------------------
+
+import os as _os
+
+if _os.environ.get("LIVE_TRADING", "false").lower() == "true":
+    raise RuntimeError(
+        "Replay engine requires paper mode; disable LIVE_TRADING to continue"
+    )
+
 
 class StrategyReplayer:
+    """
+    Local strategy replay and performance report engine.
+
+    The replayer is a thin orchestration layer. It does NOT reimplement trading,
+    risk, audit, or metrics - it wires the existing Stage 2.2 / 3.2 / 3.3 / 3.4 / 4
+    components together and reports on the results they produce:
+
+      * MultiBrainOrchestrator      (Stage 2.2) builds the decision signal
+      * BacktestSimulator           (Stage 4)   drives the candle loop
+      * PaperExecutor               (Stage 3.2) executes each order
+      * PaperRiskGate               (Stage 3.3) validates before execution
+      * AuditLog                    (Stage 3.4) records every order event
+
+    Paper-only: no venue connection, no order is submitted, no network.
+    LIVE_TRADING must be false (guarded at import time and at run time).
+    """
+
     def __init__(self, config: ReplayConfig, strategy: StrategySpec):
         self.config = config
         self.strategy = strategy
         self.audit_log = AuditLog()
         self.backtest_config = config.to_backtest_config()
+        self.sim = None
 
     def _input_hash(self, candles: Sequence[Any]) -> str:
         normalized = []
@@ -75,7 +105,27 @@ class StrategyReplayer:
         }
         return canonical_hash(payload)
 
-    def run(self, candles: Sequence[Any]) -> dict:
+    def run(self, candles: Sequence[Any], signal_fn: Any | None = None) -> dict:
+        """
+        Replay a strategy over OHLCV candles and produce a performance report.
+
+        Real execution chain (no reimplementation, no placeholder mock order):
+            signal_fn(candle, account)
+              -> BacktestSimulator.run                 (Stage 4)
+              -> simulator builds OrchestratorReport
+              -> PaperExecutor.execute(report)          (Stage 3.2)
+                   -> report.final_decision
+                   -> PaperRiskGate.check(decision)    (Stage 3.3, when wired)
+                   -> AuditLog events                   (Stage 3.4)
+        Every trade routes through the real PaperExecutor; cash and positions are
+        never mutated outside it. All activity is paper-only (LIVE_TRADING=false).
+        """
+        # Runtime safety guard (third layer; see module import guard above).
+        if _os.environ.get("LIVE_TRADING", "false").lower() == "true":
+            raise RuntimeError(
+                "Replay engine requires paper mode; disable LIVE_TRADING to continue"
+            )
+
         # Apply time filter if configured.
         filtered = list(candles)
         if self.config.start_time is not None:
@@ -96,18 +146,31 @@ class StrategyReplayer:
         if not filtered:
             raise ValueError("no candles available in replay window")
 
-        brains = build_brains(self.strategy.brains)
-        orchestrator = MultiBrainOrchestrator(brains, max_workers=max(1, len(brains)))
+        # Build the signal function from the real MultiBrainOrchestrator unless a
+        # caller supplies one. Tests use this seam to drive a concrete BUY/SELL
+        # signal through the genuine execution chain (no shortcut, no mock).
+        if signal_fn is None:
+            brains = build_brains(self.strategy.brains)
+            orchestrator = MultiBrainOrchestrator(
+                brains, max_workers=max(1, len(brains))
+            )
+            signal_fn = build_signal_fn(orchestrator, self.strategy, self.config)
 
         sim = BacktestSimulator(
             self.backtest_config, risk_gate=None, audit_log=self.audit_log
         )
 
-        # Inject the risk gate so the executor enforces it and the audit log
-        # captures validated/rejected events (Stage 3.3 + Stage 3.4 pipeline).
+        # Wire the real Stage 3.3 risk gate and Stage 3.2 executor so the gate is
+        # genuinely enforced during execution. The gate is configured from the
+        # strategy's RiskGateSpec, so it is not a no-op: a BUY or SELL whose
+        # policy fails (e.g. missing stop-loss, exceeded size) is rejected and
+        # leaves cash/positions unchanged (created -> validated -> rejected).
+        # Note: the Stage 4 simulator emits FinalDecision.stop_loss=None, so the
+        # gate rejects every BUY/SELL by default (no stop-loss policy) - the safe
+        # default. A real strategy's brains supply the stop-loss to allow a trade.
         risk_gate = PaperRiskGate(
             account=sim.account,
-            executor=sim._executor,
+            executor=None,
             min_confidence=self.strategy.risk_gate.min_confidence,
             max_position_fraction=self.strategy.risk_gate.max_position_fraction,
             min_risk_reward=self.strategy.risk_gate.min_risk_reward,
@@ -120,7 +183,7 @@ class StrategyReplayer:
             risk_gate=risk_gate,
         )
 
-        signal_fn = build_signal_fn(orchestrator, self.strategy, self.config)
+        self.sim = sim
         result = sim.run(filtered, signal_fn=signal_fn, symbol=self.config.symbol)
 
         input_hash = self._input_hash(filtered)
