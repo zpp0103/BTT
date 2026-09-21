@@ -12,6 +12,11 @@ from crypto_quant_ai.backend.paper.executor import (
     ExecutionResult,
     PaperExecutor,
 )
+from crypto_quant_ai.backend.paper.risk_gate import (
+    PaperRiskGate,
+    RiskGateAudit,
+    RiskGateResult,
+)
 
 __all__ = [
     "PaperAccount",
@@ -20,6 +25,9 @@ __all__ = [
     "PaperPosition",
     "ExecutionLog",
     "ExecutionResult",
+    "PaperRiskGate",
+    "RiskGateAudit",
+    "RiskGateResult",
     "buy",
     "sell",
 ]
