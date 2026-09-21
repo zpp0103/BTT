@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from crypto_quant_ai.backend.decision.brain_orchestrator import (
         OrchestratorReport,
     )
+    from crypto_quant_ai.backend.paper.audit import AuditLog
+    from crypto_quant_ai.backend.paper.risk_gate import PaperRiskGate
 
 from crypto_quant_ai.backend.paper.account import (
     PaperAccount,
@@ -17,6 +20,11 @@ from crypto_quant_ai.backend.paper.account import (
     buy,
     sell,
 )
+from crypto_quant_ai.backend.paper.order_event import (
+    OrderEvent,
+    make_event_id,
+)
+from crypto_quant_ai.backend.paper.snapshot import snapshot_from_account
 
 
 # ---------------------------------------------------------------------------
@@ -104,12 +112,53 @@ class PaperExecutor:
         account: PaperAccount,
         *,
         default_fraction: float = 0.10,
+        audit_log: "AuditLog | None" = None,
+        risk_gate: "PaperRiskGate | None" = None,
     ) -> None:
         if not (0 < default_fraction <= 1):
             raise ValueError("default_fraction must be in (0, 1]")
         self.account = account
         self.default_fraction = default_fraction
+        self.audit_log = audit_log
+        self.risk_gate = risk_gate
         self._log: ExecutionLog = ExecutionLog()
+        self._order_seq: int = 0
+
+    # ------------------------------------------------------------------
+    # Audit helpers
+    # ------------------------------------------------------------------
+
+    def _next_order_id(self) -> str:
+        self._order_seq += 1
+        return f"ord-{self._order_seq:06d}"
+
+    def _audit_event(
+        self,
+        order_id: str,
+        decision,
+        event_type: str,
+        snapshot,
+        *,
+        side: str = "",
+        quantity: float = 0.0,
+        price: float = 0.0,
+        reasons: "list[str] | None" = None,
+        source: str = "paper_executor",
+    ) -> OrderEvent:
+        return OrderEvent(
+            event_id=make_event_id(),
+            order_id=order_id,
+            event_type=event_type,  # type: ignore[arg-type]
+            symbol=getattr(decision, "symbol", ""),
+            side=side,
+            timestamp=datetime.now(timezone.utc),
+            quantity=quantity,
+            price=price or (getattr(decision, "entry", 0.0) or 0.0),
+            status=event_type,
+            reasons=reasons or [],
+            source=source,  # type: ignore[arg-type]
+            snapshot=snapshot,
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -120,11 +169,63 @@ class PaperExecutor:
         Convert an OrchestratorReport into a paper order and update self.account.
 
         Returns an ExecutionResult (never raises; errors are captured in the result).
+
+        When an ``audit_log`` is injected, every lifecycle transition
+        (created / validated / accepted / executed / closed / rejected / skipped)
+        is recorded as an :class:`OrderEvent` with surrounding portfolio snapshots.
+        When a ``risk_gate`` is injected, the Stage 3.3 gate runs *before* any
+        order and a rejected decision never reaches ``buy``/``sell`` (so cash and
+        positions are guaranteed unchanged and no ``executed`` event is emitted).
         """
         decision = report.final_decision
+        order_id = self._next_order_id()
+        side = (
+            "buy" if decision.decision in ("BUY", "LONG")
+            else "sell" if decision.decision in ("SELL", "SHORT")
+            else ""
+        )
+        created_snap = snapshot_from_account(self.account, "paper_executor")
+        if self.audit_log is not None:
+            self.audit_log.append(
+                self._audit_event(order_id, decision, "created", created_snap, side=side)
+            )
+
+        # ── Optional Stage 3.3 risk gate (never bypassed when injected) ──
+        if self.risk_gate is not None:
+            gate = self.risk_gate.check(decision)
+            if self.audit_log is not None:
+                self.audit_log.append(
+                    self._audit_event(
+                        order_id, decision, "validated", created_snap, side=side,
+                        reasons=gate.reasons, source="risk_gate",
+                    )
+                )
+            if not gate.allowed:
+                if self.audit_log is not None:
+                    self.audit_log.append(
+                        self._audit_event(
+                            order_id, decision, "rejected", created_snap, side=side,
+                            reasons=gate.reasons, source="risk_gate",
+                        )
+                    )
+                result = ExecutionResult(
+                    executed=False,
+                    reason="Risk gate rejected: " + "; ".join(gate.reasons),
+                    account_snapshot=self._snapshot(),
+                )
+                self._log.results.append(result)
+                return result
 
         # ── Guard 2: veto ──────────────────────────────────────────────
         if decision.veto:
+            if self.audit_log is not None:
+                self.audit_log.append(
+                    self._audit_event(
+                        order_id, decision, "skipped", created_snap, side=side,
+                        reasons=[getattr(decision, "veto_reason", "blocked by brain")],
+                        source="paper_executor",
+                    )
+                )
             result = ExecutionResult(
                 executed=False,
                 veto_blocked=True,
@@ -136,6 +237,13 @@ class PaperExecutor:
 
         # ── Guard 3: no-trade ──────────────────────────────────────────
         if decision.decision == "NO_TRADE":
+            if self.audit_log is not None:
+                self.audit_log.append(
+                    self._audit_event(
+                        order_id, decision, "skipped", created_snap, side=side,
+                        reasons=["Decision is NO_TRADE"], source="paper_executor",
+                    )
+                )
             result = ExecutionResult(
                 executed=False,
                 no_trade=True,
@@ -148,6 +256,14 @@ class PaperExecutor:
         symbol = decision.symbol.upper()
         price = decision.entry
         if price is None or price <= 0:
+            if self.audit_log is not None:
+                self.audit_log.append(
+                    self._audit_event(
+                        order_id, decision, "rejected", created_snap, side=side,
+                        reasons=[f"No valid entry price for {symbol} (entry={price})"],
+                        source="paper_executor",
+                    )
+                )
             result = ExecutionResult(
                 executed=False,
                 reason=f"No valid entry price for {symbol} (entry={price})",
@@ -160,6 +276,13 @@ class PaperExecutor:
         try:
             quantity = self._calc_quantity(decision, price)
         except ValueError as exc:
+            if self.audit_log is not None:
+                self.audit_log.append(
+                    self._audit_event(
+                        order_id, decision, "rejected", created_snap, side=side,
+                        reasons=[f"position_size error: {exc}"], source="paper_executor",
+                    )
+                )
             result = ExecutionResult(
                 executed=False,
                 reason=f"position_size error: {exc}",
@@ -167,6 +290,15 @@ class PaperExecutor:
             )
             self._log.results.append(result)
             return result
+
+        # ── Accepted: snapshot before execution ───────────────────────
+        if self.audit_log is not None:
+            self.audit_log.append(
+                self._audit_event(
+                    order_id, decision, "accepted", created_snap, side=side,
+                    quantity=quantity, price=price, source="paper_executor",
+                )
+            )
 
         # ── Execute ────────────────────────────────────────────────────
         try:
@@ -177,6 +309,14 @@ class PaperExecutor:
                 new_account, order = sell(self.account, symbol, quantity, price)
                 self.account = new_account
             else:
+                if self.audit_log is not None:
+                    self.audit_log.append(
+                        self._audit_event(
+                            order_id, decision, "skipped", created_snap, side=side,
+                            reasons=[f"Unknown decision: {decision.decision}"],
+                            source="paper_executor",
+                        )
+                    )
                 result = ExecutionResult(
                     executed=False,
                     reason=f"Unknown decision: {decision.decision}",
@@ -185,6 +325,20 @@ class PaperExecutor:
                 self._log.results.append(result)
                 return result
 
+            after_snap = snapshot_from_account(self.account, "paper_executor")
+            if self.audit_log is not None:
+                self.audit_log.append(
+                    self._audit_event(
+                        order_id, decision, "executed", after_snap, side=order.side,
+                        quantity=quantity, price=price, source="paper_executor",
+                    )
+                )
+                self.audit_log.append(
+                    self._audit_event(
+                        order_id, decision, "closed", after_snap, side=order.side,
+                        quantity=quantity, price=price, source="paper_executor",
+                    )
+                )
             execution_result = ExecutionResult(
                 executed=True,
                 order=order,
@@ -195,6 +349,14 @@ class PaperExecutor:
             return execution_result
 
         except ValueError as exc:
+            if self.audit_log is not None:
+                self.audit_log.append(
+                    self._audit_event(
+                        order_id, decision, "rejected", created_snap, side=side,
+                        quantity=quantity, price=price,
+                        reasons=[str(exc)], source="paper_executor",
+                    )
+                )
             result = ExecutionResult(
                 executed=False,
                 reason=str(exc),
