@@ -45,10 +45,24 @@ class LocalSessionStore:
         )
 
     def path_for(self, session_id: str) -> str:
-        return os.path.join(self.root_dir, f"{session_id}.json")
+        safe_id = self._sanitize_session_id(session_id)
+        path = os.path.abspath(os.path.join(self.root_dir, f"{safe_id}.json"))
+        root = os.path.abspath(self.root_dir)
+        if os.path.commonpath([root, path]) != root:
+            raise ValueError("invalid session_id")
+        return path
 
     def exists(self, session_id: str) -> bool:
         return os.path.exists(self.path_for(session_id))
+
+    @staticmethod
+    def _sanitize_session_id(session_id: str) -> str:
+        if not isinstance(session_id, str) or not session_id.strip():
+            raise ValueError("invalid session_id")
+        safe_id = re.sub(r"[^A-Za-z0-9._-]+", "_", session_id.strip())
+        if safe_id != session_id.strip():
+            raise ValueError("invalid session_id")
+        return safe_id
 
     def save(self, state: Stage14SessionState) -> str:
         path = self.path_for(state.session_id)

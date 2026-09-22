@@ -228,6 +228,13 @@ def test_stage14_invalid_restore_raises(tmp_path):
         manager.get_session(view.session_id)
 
 
+def test_stage14_invalid_session_id_rejected(tmp_path):
+    manager = make_manager(tmp_path)
+    manager.open_session(GatewayConfig(symbol="BTC/USDT", timeframe="15m"))
+    with pytest.raises(ValueError):
+        manager.get_session("../escape")
+
+
 
 def test_stage14_history_export_csv(tmp_path):
     manager = make_manager(tmp_path)
