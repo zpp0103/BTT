@@ -652,6 +652,16 @@ def test_clean_hyperopt(mocker, hyperopt_conf, caplog):
     assert log_has(f"Removing `{h.data_pickle_file}`.", caplog)
 
 
+def test_duplicate_optuna_asked_points_detects_batch_duplicates():
+    trial = MagicMock()
+    trial.params = {"buy_rsi": 30}
+    trial.study.get_trials.return_value = []
+
+    asked_trials = [MagicMock(params={"buy_rsi": 10}), MagicMock(params={"buy_rsi": 10})]
+
+    assert Hyperopt.duplicate_optuna_asked_points(MagicMock(), trial, asked_trials) is True
+
+
 def test_print_json_spaces_all(mocker, hyperopt_conf, capsys) -> None:
     dumper = mocker.patch("freqtrade.optimize.hyperopt.hyperopt_optimizer.dump")
     dumper2 = mocker.patch("freqtrade.optimize.hyperopt.Hyperopt._save_result")

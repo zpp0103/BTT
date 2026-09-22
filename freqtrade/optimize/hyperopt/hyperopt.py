@@ -149,7 +149,7 @@ class Hyperopt:
         return asked
 
     def duplicate_optuna_asked_points(self, trial: Trial, asked_trials: list[FrozenTrial]) -> bool:
-        asked_trials_no_dups: list[FrozenTrial] = []
+        asked_trials_no_dups: list[dict] = []
         trials_to_consider = trial.study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
         # Check whether we already evaluated the sampled `params`.
         for t in reversed(trials_to_consider):
@@ -158,7 +158,7 @@ class Hyperopt:
         # Check whether same`params` in one batch (asked_trials). Autosampler is doing this.
         for t in asked_trials:
             if t.params not in asked_trials_no_dups:
-                asked_trials_no_dups.append(t)
+                asked_trials_no_dups.append(t.params)
         return len(asked_trials_no_dups) != len(asked_trials)
 
     def get_asked_points(self, n_points: int, dimensions: dict) -> tuple[list[Any], list[bool]]:
