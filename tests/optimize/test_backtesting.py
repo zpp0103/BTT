@@ -318,6 +318,27 @@ def test_backtesting_init_no_timeframe(mocker, default_conf, caplog) -> None:
         Backtesting(default_conf)
 
 
+def test_backtest_one_strategy_no_data_after_startup(default_conf, fee, mocker, testdatadir) -> None:
+    patch_exchange(mocker)
+    mocker.patch(f"{EXMS}.get_fee", fee)
+    mocker.patch(f"{EXMS}.get_min_pair_stake_amount", return_value=0.00001)
+    mocker.patch(f"{EXMS}.get_max_pair_stake_amount", return_value=float("inf"))
+
+    backtesting = Backtesting(default_conf)
+    backtesting._set_strategy(backtesting.strategylist[0])
+
+    pair = "UNITTEST/BTC"
+    timerange = TimeRange.parse_timerange("1510694220-1510700340")
+    data = history.load_data(datadir=testdatadir, timeframe="1m", pairs=[pair], timerange=timerange)
+    processed = backtesting.strategy.advise_all_indicators(data)
+    backtesting.required_startup = len(processed[pair]) + 1
+
+    with pytest.raises(
+        OperationalException, match=r"No data left after adjusting for startup candles\."
+    ):
+        backtesting.backtest_one_strategy(backtesting.strategy, processed, timerange)
+
+
 def test_data_with_fee(default_conf, mocker) -> None:
     patch_exchange(mocker)
     default_conf["fee"] = 0.01234
