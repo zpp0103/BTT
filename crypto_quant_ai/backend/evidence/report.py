@@ -68,6 +68,9 @@ class EvidenceReporter:
         return buf.getvalue()
 
     def _redact(self, value: Any, parent_key: str = "") -> Any:
+        key_l = parent_key.lower()
+        if any(marker in key_l for marker in _SENSITIVE_MARKERS):
+            return _REDACTED
         if isinstance(value, dict):
             out = {}
             for key, sub in value.items():
@@ -75,7 +78,4 @@ class EvidenceReporter:
             return out
         if isinstance(value, list):
             return [self._redact(v, parent_key=parent_key) for v in value]
-        key_l = parent_key.lower()
-        if any(marker in key_l for marker in _SENSITIVE_MARKERS):
-            return _REDACTED
         return value
