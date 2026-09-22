@@ -161,3 +161,14 @@ class EvidenceCollector:
                     details=details,
                 )
             )
+        else:
+            evidence.add(
+                EvidenceItem(
+                    source="replay",
+                    category="replay",
+                    supports_trade=False,
+                    strength=0.5,
+                    summary="stable replay without positive pnl does not support active trade",
+                    details=details,
+                )
+            )

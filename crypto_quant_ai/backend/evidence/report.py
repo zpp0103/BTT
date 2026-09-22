@@ -43,11 +43,8 @@ class EvidenceReporter:
     def export_json(self, report: EvidenceReport) -> str:
         assert_paper_only()
         payload = asdict(report)
-        payload["evidence"]["items"] = [
-            {**item, "details": self._redact(item.get("details", {}))}
-            for item in payload["evidence"]["items"]
-        ]
-        return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+        redacted_payload = self._redact(payload)
+        return json.dumps(redacted_payload, ensure_ascii=False, sort_keys=True)
 
     def export_csv(self, report: EvidenceReport) -> str:
         assert_paper_only()

@@ -51,6 +51,15 @@ def test_collector_adds_replay_opposition_with_threshold_details():
     assert replay_risk[0].strength >= 0.5
 
 
+def test_collector_records_stable_replay_even_without_positive_pnl():
+    collector = EvidenceCollector(stability_threshold=0.65)
+    ev = collector.collect(replay_metrics={"stability": 0.8, "pnl": 0.0, "drawdown": 0.1})
+    replay_items = [i for i in ev.items if i.source == "replay"]
+    assert len(replay_items) == 1
+    assert replay_items[0].supports_trade is False
+    assert replay_items[0].strength == 0.5
+
+
 def test_contradiction_uses_evidence_threshold_and_detects_active_unstable_combo():
     evidence = EvidenceSet(
         items=[
@@ -187,6 +196,21 @@ def test_report_markdown_json_csv_and_redaction():
     assert rows[0] == ["source", "category", "supports_trade", "strength", "summary", "details"]
     sources = {row[0] for row in rows[1:]}
     assert {"committee", "research", "replay"}.issubset(sources)
+
+
+def test_report_json_redacts_sensitive_summary_and_reasons():
+    evidence = EvidenceSet(
+        items=[
+            EvidenceItem("committee", "committee", True, 0.9, "token-secret should be hidden"),
+            EvidenceItem("replay", "replay", True, 0.9, "stable replay", {"stability": 0.9, "stability_threshold": 0.6}),
+        ]
+    )
+    verification = EvidenceVerifier(min_items=2).verify(evidence)
+    verification.reasons = ["api_key=abc should be hidden"]
+    report = EvidenceReport(evidence=evidence, verification=verification)
+    js = EvidenceReporter().export_json(report)
+    assert "token-secret should be hidden" not in js
+    assert "api_key=abc should be hidden" not in js
 
 
 def test_stage12_offline_smoke_committee_to_report():
