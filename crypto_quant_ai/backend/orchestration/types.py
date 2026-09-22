@@ -14,6 +14,7 @@ from crypto_quant_ai.backend.data.ohlcv import OHLCVBar
 from crypto_quant_ai.backend.evidence.types import EvidenceSet, VerificationResult
 from crypto_quant_ai.backend.gateway import GatewayConfig, GatewayExecutionResult, GatewayReport
 from crypto_quant_ai.backend.intelligence import IntelligenceReport
+from crypto_quant_ai.backend.paper.account import PaperAccount
 
 _DYNAMIC_HASH_KEYS = {
     "generated_at",
@@ -39,6 +40,7 @@ class Stage13Request:
     symbol: str = "BTC/USDT"
     timeframe: str = "15m"
     timeframes: tuple[int, ...] = (20, 50, 100)
+    account: PaperAccount | None = None
     committee_config: ModelCommitteeConfig = field(
         default_factory=default_stage13_committee_config
     )
@@ -104,6 +106,7 @@ class Stage13ApiRequest(BaseModel):
     symbol: str = Field(default="BTC/USDT", min_length=1)
     timeframe: str = Field(default="15m", min_length=1)
     timeframes: list[int] = Field(default_factory=lambda: [20, 50, 100])
+    account: PaperAccount | None = None
 
     @field_validator("symbol", "timeframe")
     @classmethod
@@ -131,6 +134,7 @@ class Stage13ApiRequest(BaseModel):
             symbol=self.symbol,
             timeframe=self.timeframe,
             timeframes=tuple(self.timeframes),
+            account=self.account,
             gateway_config=gateway_config,
         )
 

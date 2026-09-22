@@ -82,7 +82,7 @@ class Stage13Orchestrator:
         )
 
         gateway_hash = compute_gateway_hash(gateway_config)
-        session = LiveTradingSession(gateway_config)
+        session = LiveTradingSession(gateway_config, account=request.account)
         session.start()
         try:
             final_decision = self._build_final_decision(

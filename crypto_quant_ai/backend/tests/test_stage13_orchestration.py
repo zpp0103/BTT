@@ -22,6 +22,7 @@ from crypto_quant_ai.backend.intelligence import (
     ResearchReport,
     build_intelligence_report,
 )
+from crypto_quant_ai.backend.paper.account import PaperAccount, PaperPosition
 from crypto_quant_ai.backend.orchestration import (
     Stage13Orchestrator,
     Stage13Report,
@@ -289,11 +290,28 @@ def test_stage13_report_formats_redact_sensitive_values():
     assert payload["result"]["executed"] is True
 
 
-
 def test_stage13_live_guard(monkeypatch):
     monkeypatch.setenv("LIVE_TRADING", "true")
     with pytest.raises(RuntimeError):
         Stage13Orchestrator()
+
+
+def test_stage13_can_execute_sell_with_existing_account_position():
+    intelligence = make_intelligence_report(action="SELL", stability=0.95, recommendation="stable sell setup")
+    account = PaperAccount(
+        cash=100000.0,
+        positions={"BTC/USDT": PaperPosition(symbol="BTC/USDT", quantity=50.0, avg_cost=90.0)},
+    )
+    orch = Stage13Orchestrator(
+        models=[ScriptedBrain("quant", "SELL", 0.95), ScriptedBrain("risk", "SELL", 0.9)],
+        intelligence_orchestrator=FakeIntelligenceOrchestrator(intelligence),
+    )
+    report = orch.run(Stage13Request(candles=make_candles(), account=account))
+    assert report.result.verification_passed is True
+    assert report.result.gateway_allowed is True
+    assert report.result.executed is True
+    assert report.result.final_decision.decision == "SELL"
+    assert report.result.gateway_result is not None and report.result.gateway_result.executed
 
 
 

@@ -5,6 +5,7 @@ Stage 13 将 Stage 9 intelligence、Stage 11 committee、Stage 12 evidence、Sta
 ## 目标
 
 - 输入从本地 OHLCV candles 开始。
+- 可选携带当前 paper account snapshot，以便在单次编排中复用已有持仓并允许 `SELL` 路径执行。
 - 输出一个可审计的单次执行结果，包含：
   - market context
   - intelligence report
