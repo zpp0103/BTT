@@ -45,15 +45,11 @@ class LocalSessionStore:
         )
 
     def path_for(self, session_id: str) -> str:
-        safe_id = self._sanitize_session_id(session_id)
-        path = os.path.abspath(os.path.join(self.root_dir, f"{safe_id}.json"))
-        root = os.path.abspath(self.root_dir)
-        if os.path.commonpath([root, path]) != root:
-            raise ValueError("invalid session_id")
-        return path
+        return os.path.join(self.root_dir, "sessions.json")
 
     def exists(self, session_id: str) -> bool:
-        return os.path.exists(self.path_for(session_id))
+        safe_id = self._sanitize_session_id(session_id)
+        return safe_id in self._load_all()
 
     @staticmethod
     def _sanitize_session_id(session_id: str) -> str:
@@ -65,19 +61,21 @@ class LocalSessionStore:
         return safe_id
 
     def save(self, state: Stage14SessionState) -> str:
-        path = self.path_for(state.session_id)
+        safe_id = self._sanitize_session_id(state.session_id)
+        payload = self._load_all()
+        payload[safe_id] = self._state_to_dict(state)
+        path = self.path_for(safe_id)
         with open(path, "w", encoding="utf-8") as fh:
-            json.dump(self._state_to_dict(state), fh, ensure_ascii=False, indent=2)
+            json.dump(payload, fh, ensure_ascii=False, indent=2)
         return path
 
     def load(self, session_id: str) -> Stage14SessionState:
-        path = self.path_for(session_id)
-        if not os.path.exists(path):
-            raise FileNotFoundError(session_id)
+        safe_id = self._sanitize_session_id(session_id)
         try:
-            with open(path, "r", encoding="utf-8") as fh:
-                payload = json.load(fh)
-            return self._state_from_dict(payload)
+            payload = self._load_all()
+            if safe_id not in payload:
+                raise FileNotFoundError(session_id)
+            return self._state_from_dict(payload[safe_id])
         except FileNotFoundError:
             raise
         except Exception as exc:
@@ -97,6 +95,16 @@ class LocalSessionStore:
             audit_summary=Stage14AuditSummary(0, 0, 0, 0, 0),
             reconciliation=Stage14ReconciliationSnapshot(True, 0, 0),
         )
+
+    def _load_all(self) -> dict[str, Any]:
+        path = self.path_for("sessions")
+        if not os.path.exists(path):
+            return {}
+        with open(path, "r", encoding="utf-8") as fh:
+            payload = json.load(fh)
+        if not isinstance(payload, dict):
+            raise ValueError("session store root must be a JSON object")
+        return payload
 
     @staticmethod
     def build_audit_log(events: list[dict[str, Any]]) -> AuditLog:
