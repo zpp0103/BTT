@@ -65,7 +65,7 @@ class ModelCommitteeConfig:
     fusion: FusionStrategy = FusionStrategy.WEIGHTED_MAJORITY
     weights: dict[str, float] = field(default_factory=dict)
     quorum: int = 2
-    allow_active_decisions: bool = True
+    allow_active_decisions: bool = False
     require_stop_loss_for_active: bool = False
     routing: bool = False
     fail_closed: bool = True

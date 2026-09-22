@@ -20,6 +20,7 @@ from crypto_quant_ai.backend.committee.fusions import (
     weighted_majority,
 )
 from crypto_quant_ai.backend.committee.policy import gate_active
+from crypto_quant_ai.backend.committee.router import route_models
 from crypto_quant_ai.backend.committee.types import ModelContribution
 from crypto_quant_ai.backend.core.models import BrainAnalysis, MarketData
 from crypto_quant_ai.backend.intelligence.market_state import (
@@ -102,6 +103,11 @@ def test_unanimous_disagree_fails_closed():
     assert d == "NO_TRADE" and conflict and not quorum
 
 
+def test_unanimous_single_active_no_quorum():
+    d, _, conflict, quorum = unanimous([_c("a", "BUY", 0.7)], quorum=2)
+    assert d == "NO_TRADE" and not conflict and not quorum
+
+
 def test_consensus_quorum_met():
     d, _, conflict, quorum = consensus_quorum(
         [_c("a", "BUY", 0.7), _c("b", "BUY", 0.6), _c("c", "NO_TRADE", 0.1)], quorum=2
@@ -131,10 +137,10 @@ def test_gate_allows_active_when_allowed():
 
 
 # ---------------- committee ----------------
-def test_committee_default_buy_with_quorum():
+def test_committee_default_blocks_active_with_quorum():
     models = [ScriptedBrain("a", "BUY", 0.8), ScriptedBrain("b", "BUY", 0.6)]
     v = ModelCommittee(models).evaluate(_md())
-    assert v.final_decision == "BUY" and v.quorum_met and not v.conflict
+    assert v.final_decision == "NO_TRADE" and v.quorum_met and not v.conflict
 
 
 def test_committee_single_buy_fails_closed():
@@ -151,7 +157,12 @@ def test_committee_conflict_fail_closed():
 def test_committee_conflict_not_fail_closed_uses_weighted():
     models = [ScriptedBrain("a", "BUY", 0.9), ScriptedBrain("b", "SELL", 0.4)]
     v = ModelCommittee(
-        models, ModelCommitteeConfig(fail_closed=False, fusion=FusionStrategy.WEIGHTED_MAJORITY)
+        models,
+        ModelCommitteeConfig(
+            fail_closed=False,
+            fusion=FusionStrategy.WEIGHTED_MAJORITY,
+            allow_active_decisions=True,
+        ),
     ).evaluate(_md())
     assert v.final_decision == "BUY"
 
@@ -187,7 +198,10 @@ def test_committee_active_allowed_by_policy():
 def test_committee_unanimous_strategy():
     models = [ScriptedBrain("a", "SELL", 0.7), ScriptedBrain("b", "SELL", 0.6)]
     v = ModelCommittee(
-        models, ModelCommitteeConfig(fusion=FusionStrategy.UNANIMOUS, quorum=2)
+        models,
+        ModelCommitteeConfig(
+            fusion=FusionStrategy.UNANIMOUS, quorum=2, allow_active_decisions=True
+        ),
     ).evaluate(_md())
     assert v.final_decision == "SELL"
 
@@ -203,6 +217,7 @@ def test_committee_weights_applied():
             fusion=FusionStrategy.WEIGHTED_MAJORITY,
             weights={"strong": 5.0, "weak": 1.0},
             fail_closed=False,
+            allow_active_decisions=True,
         ),
     ).evaluate(_md())
     assert v.final_decision == "BUY"
@@ -234,6 +249,20 @@ def test_committee_routing_safety_keeps_all_when_few():
     assert v.routing.get("kept") == "all(unknown)"
 
 
+def test_route_models_uses_exact_name_matching():
+    state = MarketState(Regime.TREND, 0.7, {}, "trend")
+    models = [
+        ScriptedBrain("quant", "BUY", 0.5),
+        ScriptedBrain("market_structure", "BUY", 0.5),
+        ScriptedBrain("llm_stub", "NO_TRADE", 0.1),
+        ScriptedBrain("quant_extra", "BUY", 0.5),
+    ]
+    filtered, info = route_models(models, state, ModelCommitteeConfig(routing=True))
+    kept_names = [m.name for m in filtered]
+    assert "quant_extra" not in kept_names
+    assert info.get("kept") == ["quant", "market_structure", "llm_stub"]
+
+
 def test_committee_requires_models():
     with pytest.raises(ValueError):
         ModelCommittee([])
@@ -241,8 +270,9 @@ def test_committee_requires_models():
 
 def test_committee_to_final_decision():
     models = [ScriptedBrain("a", "BUY", 0.8), ScriptedBrain("b", "BUY", 0.6)]
-    v = ModelCommittee(models).evaluate(_md())
-    fd = ModelCommittee(models).to_final_decision(_md(), v)
+    cfg = ModelCommitteeConfig(allow_active_decisions=True)
+    v = ModelCommittee(models, cfg).evaluate(_md())
+    fd = ModelCommittee(models, cfg).to_final_decision(_md(), v)
     assert fd.decision == "BUY" and fd.symbol == "BTC"
 
 

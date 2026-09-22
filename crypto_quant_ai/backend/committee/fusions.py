@@ -75,6 +75,8 @@ def unanimous(contrs, quorum: int = 2):
     conflict = len(set(acts)) > 1
     if not acts:
         return "NO_TRADE", 0.0, False, False
+    if len(acts) < quorum:
+        return "NO_TRADE", 0.0, conflict, False
     if len(set(acts)) == 1:
         agreed = acts[0]
         chosen = [c for c in contrs if _norm(c.decision) == agreed]

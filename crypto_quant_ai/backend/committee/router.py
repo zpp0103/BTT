@@ -11,10 +11,10 @@ from typing import Any, Sequence
 from crypto_quant_ai.backend.intelligence.market_state import MarketState, Regime
 
 _ROUTING_TABLE: dict[Regime, set[str]] = {
-    Regime.TREND: {"quant", "market_structure", "llm"},
-    Regime.RANGE: {"quant", "risk", "llm"},
-    Regime.HIGH_VOL: {"risk", "devil_advocate", "llm"},
-    Regime.LOW_VOL: {"quant", "market_structure", "llm"},
+    Regime.TREND: {"quant", "market_structure", "llm_stub"},
+    Regime.RANGE: {"quant", "risk", "llm_stub"},
+    Regime.HIGH_VOL: {"risk", "devil_advocate", "llm_stub"},
+    Regime.LOW_VOL: {"quant", "market_structure", "llm_stub"},
     Regime.UNKNOWN: set(),
 }
 
@@ -29,7 +29,7 @@ def route_models(
         return list(models), {
             "enabled": True, "regime": state.regime.value, "kept": "all(unknown)"
         }
-    filtered = [m for m in models if any(k in m.name for k in keep)]
+    filtered = [m for m in models if getattr(m, "name", "") in keep]
     if len(filtered) < 2:
         return list(models), {
             "enabled": True, "regime": state.regime.value, "kept": "all(safety)"
