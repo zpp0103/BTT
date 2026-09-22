@@ -286,12 +286,6 @@ class Stage13Orchestrator:
         entry = float(market_data.close)
         sl_pct = max(gateway_config.risk_manager.min_stop_loss_pct + 1e-6, 0.005001)
         rr = max(gateway_config.risk_manager.min_risk_reward + 0.01, 1.51)
-        max_notional = min(
-            session.account.cash * gateway_config.risk_manager.max_position_fraction,
-            gateway_config.circuit_breaker.max_order_notional,
-        )
-        scaled_notional = max_notional * max(confidence, gateway_config.risk_manager.min_confidence)
-
         if action == "SELL":
             position = session.account.positions.get(market_data.symbol.upper())
             if position is None:
@@ -310,10 +304,20 @@ class Stage13Orchestrator:
                     timestamp=datetime.now(timezone.utc).isoformat(),
                 )
             position_notional = position.quantity * entry
-            position_size = min(position_notional, scaled_notional)
+            position_size = min(
+                position_notional,
+                gateway_config.circuit_breaker.max_order_notional,
+            )
             stop_loss = round(entry * (1.0 + sl_pct), 8)
             take_profit = round(max(0.0, entry - (stop_loss - entry) * rr), 8)
         else:
+            max_notional = min(
+                session.account.cash * gateway_config.risk_manager.max_position_fraction,
+                gateway_config.circuit_breaker.max_order_notional,
+            )
+            scaled_notional = max_notional * max(
+                confidence, gateway_config.risk_manager.min_confidence
+            )
             position_size = scaled_notional
             stop_loss = round(entry * (1.0 - sl_pct), 8)
             take_profit = round(entry + (entry - stop_loss) * rr, 8)

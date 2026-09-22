@@ -4,9 +4,12 @@ import json
 import os
 import re
 import tempfile
+from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import datetime
 from typing import Any
+
+import fcntl
 
 from crypto_quant_ai.backend.gateway import GatewayConfig
 from crypto_quant_ai.backend.paper.account import PaperAccount
@@ -47,6 +50,9 @@ class LocalSessionStore:
     def path_for(self, session_id: str) -> str:
         return os.path.join(self.root_dir, "sessions.json")
 
+    def _lock_path(self) -> str:
+        return os.path.join(self.root_dir, ".sessions.lock")
+
     def exists(self, session_id: str) -> bool:
         safe_id = self._sanitize_session_id(session_id)
         return safe_id in self._load_all()
@@ -62,11 +68,25 @@ class LocalSessionStore:
 
     def save(self, state: Stage14SessionState) -> str:
         safe_id = self._sanitize_session_id(state.session_id)
-        payload = self._load_all()
-        payload[safe_id] = self._state_to_dict(state)
         path = self.path_for(safe_id)
-        with open(path, "w", encoding="utf-8") as fh:
-            json.dump(payload, fh, ensure_ascii=False, indent=2)
+        with self._exclusive_lock():
+            payload = self._load_all()
+            payload[safe_id] = self._state_to_dict(state)
+            fd, tmp_path = tempfile.mkstemp(
+                dir=self.root_dir,
+                prefix="sessions.",
+                suffix=".tmp",
+                text=True,
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    json.dump(payload, fh, ensure_ascii=False, indent=2)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                os.replace(tmp_path, path)
+            finally:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
         return path
 
     def load(self, session_id: str) -> Stage14SessionState:
@@ -105,6 +125,16 @@ class LocalSessionStore:
         if not isinstance(payload, dict):
             raise ValueError("session store root must be a JSON object")
         return payload
+
+    @contextmanager
+    def _exclusive_lock(self):
+        lock_path = self._lock_path()
+        with open(lock_path, "a+", encoding="utf-8") as fh:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
     @staticmethod
     def build_audit_log(events: list[dict[str, Any]]) -> AuditLog:

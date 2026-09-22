@@ -314,6 +314,22 @@ def test_stage13_can_execute_sell_with_existing_account_position():
     assert report.result.gateway_result is not None and report.result.gateway_result.executed
 
 
+def test_stage13_sell_sizing_uses_held_position_not_remaining_cash():
+    intelligence = make_intelligence_report(action="SELL", stability=0.95, recommendation="stable sell setup")
+    account = PaperAccount(
+        cash=1.0,
+        positions={"BTC/USDT": PaperPosition(symbol="BTC/USDT", quantity=10.0, avg_cost=90.0)},
+    )
+    orch = Stage13Orchestrator(
+        models=[ScriptedBrain("quant", "SELL", 0.95), ScriptedBrain("risk", "SELL", 0.9)],
+        intelligence_orchestrator=FakeIntelligenceOrchestrator(intelligence),
+    )
+    report = orch.run(Stage13Request(candles=make_candles(start=100.0), account=account))
+    assert report.result.executed is True
+    assert report.result.final_decision.decision == "SELL"
+    assert report.result.final_decision.position_size > 0
+    assert report.result.gateway_result is not None and report.result.gateway_result.executed
+
 
 def test_stage13_api_endpoint(monkeypatch):
     dummy_report = make_dummy_report()

@@ -252,6 +252,23 @@ def test_stage14_history_export_csv(tmp_path):
     assert "run_id,created_at,report_hash" in csv_text
 
 
+def test_stage14_store_preserves_multiple_sessions_in_shared_file(tmp_path):
+    store = LocalSessionStore(str(tmp_path))
+    btc_state = store.create_empty_state(
+        GatewayConfig(symbol="BTC/USDT", timeframe="15m"),
+        gateway_hash="btc",
+    )
+    eth_state = store.create_empty_state(
+        GatewayConfig(symbol="ETH/USDT", timeframe="1h"),
+        gateway_hash="eth",
+    )
+
+    store.save(btc_state)
+    store.save(eth_state)
+
+    assert store.load(btc_state.session_id).gateway_hash == "btc"
+    assert store.load(eth_state.session_id).gateway_hash == "eth"
+
 
 def test_stage14_api_endpoints(monkeypatch, tmp_path):
     real_manager = make_manager(tmp_path)
