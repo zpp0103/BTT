@@ -59,6 +59,8 @@ verdict = ModelCommittee(brains, cfg).evaluate(md)
 print(render_committee_report(verdict))
 ```
 
+`fusion` 同时接受 `FusionStrategy` 枚举和字符串值（如 `"weighted_majority"`）；非法字符串会抛出 `ValueError`，避免静默回退。
+
 ## Acceptance
 - Only `crypto_quant_ai/backend/committee/` is added; Stage 1–10, `requirements.txt`,
   and `pyproject.toml` are unchanged.
