@@ -22,6 +22,7 @@ from crypto_quant_ai.backend.gateway import (
     compute_gateway_hash,
 )
 from crypto_quant_ai.backend.intelligence import IntelligenceOrchestrator, IntelligenceReport
+from crypto_quant_ai.backend.optimize.types import SearchConfig
 from crypto_quant_ai.backend.replay.registry import build_brains
 
 from .formatters import report_to_dict
@@ -165,12 +166,20 @@ class Stage13Orchestrator:
         orchestrator = self._intelligence_orchestrator
         if orchestrator is None:
             orchestrator = IntelligenceOrchestrator(default_timeframe=request.timeframe)
+        search = request.search
+        if search is None:
+            search = SearchConfig(
+                method="random",
+                random_samples=64,
+                metric="sharpe_ratio",
+                random_seed=7,
+            )
         return orchestrator.analyze(
             candles,
             symbol=request.symbol,
             timeframes=request.timeframes,
             space=request.space,
-            search=request.search,
+            search=search,
             wf=request.wf,
             replay_config=request.replay_config,
         )

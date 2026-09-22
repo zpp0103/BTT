@@ -380,3 +380,26 @@ def test_stage13_api_invalid_candles_return_422():
     )
     assert response.status_code == 422
     assert "strictly increasing" in response.json()["detail"]
+
+
+def test_stage13_api_endpoint_real_example_succeeds():
+    client = TestClient(app)
+    candles = [
+        {
+            "timestamp": candle.timestamp.isoformat(),
+            "open": candle.open,
+            "high": candle.high,
+            "low": candle.low,
+            "close": candle.close,
+            "volume": candle.volume,
+        }
+        for candle in make_candles(120)
+    ]
+    response = client.post(
+        "/stage13/run",
+        json={"symbol": "BTC/USDT", "timeframe": "15m", "candles": candles},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["request"]["symbol"] == "BTC/USDT"
+    assert "result" in payload
