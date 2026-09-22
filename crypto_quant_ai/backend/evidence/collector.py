@@ -34,16 +34,10 @@ class EvidenceCollector:
     def _collect_committee(self, evidence: EvidenceSet, verdict: Any | None) -> None:
         if verdict is None:
             return
-        decision = getattr(verdict, "final_decision", None) or verdict.get("final_decision")
-        confidence = getattr(verdict, "confidence", None)
-        if confidence is None:
-            confidence = verdict.get("confidence", 0.0)
-        quorum = getattr(verdict, "quorum_met", None)
-        if quorum is None:
-            quorum = verdict.get("quorum_met", False)
-        conflict = getattr(verdict, "conflict", None)
-        if conflict is None:
-            conflict = verdict.get("conflict", False)
+        decision = self._read_verdict_field(verdict, "final_decision")
+        confidence = self._read_verdict_field(verdict, "confidence", 0.0)
+        quorum = self._read_verdict_field(verdict, "quorum_met", False)
+        conflict = self._read_verdict_field(verdict, "conflict", False)
 
         if decision in ("BUY", "SELL") and quorum and not conflict:
             evidence.add(
@@ -60,6 +54,14 @@ class EvidenceCollector:
                     },
                 )
             )
+
+    def _read_verdict_field(self, verdict: Any, field: str, default: Any = None) -> Any:
+        value = getattr(verdict, field, None)
+        if value is not None:
+            return value
+        if isinstance(verdict, dict):
+            return verdict.get(field, default)
+        return default
 
     def _collect_models(self, evidence: EvidenceSet, contributions: list[Any]) -> None:
         for c in contributions:

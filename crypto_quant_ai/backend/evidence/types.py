@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-_DYNAMIC_HASH_KEYS = {"generated_at", "started_at", "stopped_at"}
+_DYNAMIC_HASH_KEYS = {"generated_at", "started_at", "stopped_at", "collected_at"}
 
 
 def _validate_finite(value: Any, path: str) -> None:

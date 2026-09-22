@@ -78,8 +78,4 @@ class EvidenceReporter:
         key_l = parent_key.lower()
         if any(marker in key_l for marker in _SENSITIVE_MARKERS):
             return _REDACTED
-        if isinstance(value, str):
-            value_l = value.lower()
-            if any(marker in value_l for marker in _SENSITIVE_MARKERS):
-                return _REDACTED
         return value
