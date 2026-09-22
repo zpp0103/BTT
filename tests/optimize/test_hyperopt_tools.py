@@ -27,6 +27,17 @@ def test_load_params_accepts_path_and_string(tmp_path) -> None:
     }
 
 
+def test_load_filtered_results_ignores_blank_lines(tmp_path) -> None:
+    results_file = tmp_path / "ut_results.fthypt"
+    results_file.write_text("\n".join(["", "", rapidjson.dumps(create_results()[0]), ""]))
+
+    epochs, total_epochs = HyperoptTools.load_filtered_results(results_file, {})
+
+    assert total_epochs == 1
+    assert len(epochs) == 1
+    assert epochs[0]["is_best"] is True
+
+
 def test_save_results_saves_epochs(hyperopt, tmp_path, caplog) -> None:
     hyperopt.results_file = tmp_path / "ut_results.fthypt"
 

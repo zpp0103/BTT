@@ -131,6 +131,8 @@ class HyperoptTools:
         with results_file.open("r") as f:
             data = []
             for line in f:
+                if not line.strip():
+                    continue
                 data += [rapidjson.loads(line)]
                 if len(data) >= batch_size:
                     yield data
@@ -174,6 +176,8 @@ class HyperoptTools:
         epochs = []
         total_epochs = 0
         for epochs_tmp in HyperoptTools._read_results(results_file):
+            if not epochs_tmp:
+                continue
             if total_epochs == 0 and epochs_tmp[0].get("is_best") is None:
                 raise OperationalException(
                     "The file with HyperoptTools results is incompatible with this version "
