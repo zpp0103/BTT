@@ -66,6 +66,12 @@ class Stage13Orchestrator:
         candles = validate_ohlcv(request.candles)
         if not candles:
             raise ValueError("Stage13Request requires at least one candle")
+        gateway_config = request.gateway_config.model_copy(
+            update={
+                "symbol": request.symbol,
+                "timeframe": request.timeframe,
+            }
+        )
 
         intelligence = self._analyze_intelligence(request, candles)
         market_data = self._to_market_data(candles[-1], request.symbol, request.timeframe)
@@ -74,12 +80,12 @@ class Stage13Orchestrator:
             market_data, intelligence.market_state
         )
 
-        gateway_hash = compute_gateway_hash(request.gateway_config)
-        session = LiveTradingSession(request.gateway_config)
+        gateway_hash = compute_gateway_hash(gateway_config)
+        session = LiveTradingSession(gateway_config)
         session.start()
         try:
             final_decision = self._build_final_decision(
-                market_data, verdict, intelligence, request.gateway_config, session
+                market_data, verdict, intelligence, gateway_config, session
             )
             evidence = self._collector.collect(
                 intelligence_report=self._research_payload(intelligence, verdict),

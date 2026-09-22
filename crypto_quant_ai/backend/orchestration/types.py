@@ -122,11 +122,16 @@ class Stage13ApiRequest(BaseModel):
         return out
 
     def to_request(self) -> Stage13Request:
+        gateway_config = GatewayConfig(
+            symbol=self.symbol,
+            timeframe=self.timeframe,
+        )
         return Stage13Request(
             candles=list(self.candles),
             symbol=self.symbol,
             timeframe=self.timeframe,
             timeframes=tuple(self.timeframes),
+            gateway_config=gateway_config,
         )
 
 

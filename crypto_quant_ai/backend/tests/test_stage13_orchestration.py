@@ -13,6 +13,7 @@ from crypto_quant_ai.backend.brains.base import BrainBase
 from crypto_quant_ai.backend.core.models import BrainAnalysis
 from crypto_quant_ai.backend.data.ohlcv import OHLCVBar
 from crypto_quant_ai.backend.gateway import GatewayConfig, RiskManagerConfig
+from crypto_quant_ai.backend.gateway import compute_gateway_hash
 from crypto_quant_ai.backend.intelligence import (
     DecisionBrief,
     IntelligenceReport,
@@ -330,3 +331,52 @@ def test_stage13_api_endpoint(monkeypatch):
     payload = response.json()
     assert payload["request"]["symbol"] == "BTC/USDT"
     assert "result" in payload and "market_context" in payload
+
+
+def test_stage13_api_request_syncs_gateway_config():
+    request = api_app_module.Stage13ApiRequest(
+        symbol="ETH/USDT",
+        timeframe="1h",
+        candles=make_candles(5),
+        timeframes=[10, 20],
+    ).to_request()
+    assert request.gateway_config.symbol == "ETH/USDT"
+    assert request.gateway_config.timeframe == "1h"
+
+    intelligence = make_intelligence_report()
+    orch = Stage13Orchestrator(
+        models=[ScriptedBrain("quant", "BUY", 0.9), ScriptedBrain("risk", "BUY", 0.8)],
+        intelligence_orchestrator=FakeIntelligenceOrchestrator(intelligence),
+    )
+    report = orch.run(request)
+    assert report.request.gateway_hash == compute_gateway_hash(
+        GatewayConfig(symbol="ETH/USDT", timeframe="1h")
+    )
+
+
+def test_stage13_api_invalid_candles_return_422():
+    client = TestClient(app)
+    bad = [
+        {
+            "timestamp": "2024-01-01T01:00:00Z",
+            "open": 100.0,
+            "high": 101.0,
+            "low": 99.0,
+            "close": 100.5,
+            "volume": 1000.0,
+        },
+        {
+            "timestamp": "2024-01-01T00:00:00Z",
+            "open": 100.5,
+            "high": 102.0,
+            "low": 100.0,
+            "close": 101.5,
+            "volume": 1010.0,
+        },
+    ]
+    response = client.post(
+        "/stage13/run",
+        json={"symbol": "BTC/USDT", "timeframe": "15m", "candles": bad},
+    )
+    assert response.status_code == 422
+    assert "strictly increasing" in response.json()["detail"]

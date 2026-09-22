@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from crypto_quant_ai.backend.orchestration import (
     Stage13ApiRequest,
@@ -21,5 +21,8 @@ def health() -> dict[str, str]:
 
 @app.post("/stage13/run")
 def run_stage13(request: Stage13ApiRequest) -> dict:
-    report = Stage13Orchestrator().run(request.to_request())
+    try:
+        report = Stage13Orchestrator().run(request.to_request())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return report_to_dict(report)
