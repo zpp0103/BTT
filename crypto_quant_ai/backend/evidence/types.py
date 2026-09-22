@@ -96,12 +96,6 @@ def _canonicalize(value: Any) -> Any:
             normalized[key] = _canonicalize(value[key])
         return normalized
     if isinstance(value, list):
-        if all(isinstance(v, dict) for v in value):
-            canon_items = [_canonicalize(v) for v in value]
-            return sorted(
-                canon_items,
-                key=lambda item: json.dumps(item, sort_keys=True, ensure_ascii=False),
-            )
         return [_canonicalize(v) for v in value]
     return value
 

@@ -78,4 +78,14 @@ class EvidenceReporter:
             return out
         if isinstance(value, list):
             return [self._redact(v, parent_key=parent_key) for v in value]
+        if isinstance(value, str) and self._looks_sensitive_value(value):
+            return _REDACTED
         return value
+
+    def _looks_sensitive_value(self, value: str) -> bool:
+        lower = value.lower()
+        if not any(marker in lower for marker in _SENSITIVE_MARKERS):
+            return False
+        if len(value) < 8:
+            return False
+        return any(ch in value for ch in ("-", "_", "=", ":", "/", "."))
