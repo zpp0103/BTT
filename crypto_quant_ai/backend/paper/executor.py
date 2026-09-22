@@ -113,6 +113,7 @@ class PaperExecutor:
         account: PaperAccount,
         *,
         default_fraction: float = 0.10,
+        initial_order_seq: int = 0,
         audit_log: "AuditLog | None" = None,
         risk_gate: "PaperRiskGate | None" = None,
     ) -> None:
@@ -123,7 +124,7 @@ class PaperExecutor:
         self.audit_log = audit_log
         self.risk_gate = risk_gate
         self._log: ExecutionLog = ExecutionLog()
-        self._order_seq: int = 0
+        self._order_seq: int = max(0, int(initial_order_seq))
 
     # ------------------------------------------------------------------
     # Audit helpers
@@ -370,6 +371,10 @@ class PaperExecutor:
     def log(self) -> ExecutionLog:
         """Return a copy of the execution audit log."""
         return self._log
+
+    @property
+    def order_sequence(self) -> int:
+        return self._order_seq
 
     # ------------------------------------------------------------------
     # Internals

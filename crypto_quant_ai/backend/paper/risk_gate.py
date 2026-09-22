@@ -166,12 +166,28 @@ class PaperRiskGate:
         # ── Rule 2: position size ──────────────────────────────────────
         max_notional = self.account.cash * self.max_position_fraction
         if decision.position_size > 0:
-            size_ok = decision.position_size <= max_notional
+            if decision.decision in ("SELL", "SHORT"):
+                position = self.account.positions.get(decision.symbol.upper())
+                reference_price = (
+                    decision.entry if decision.entry is not None and decision.entry > 0 else None
+                )
+                if position is None:
+                    size_ok = False
+                    size_limit = 0.0
+                else:
+                    size_limit = position.quantity * (
+                        reference_price if reference_price is not None else position.avg_cost
+                    )
+                    size_ok = decision.position_size <= (size_limit + 1e-8)
+            else:
+                size_limit = max_notional
+                size_ok = decision.position_size <= (size_limit + 1e-8)
         else:
+            size_limit = max_notional
             size_ok = True   # no size specified → skip check
         reasons.append(
             f"[SIZE] position_size={decision.position_size} "
-            f"{'<=' if size_ok else '>'} max_notional={max_notional:.2f} → "
+            f"{'<=' if size_ok else '>'} max_notional={size_limit:.2f} → "
             f"{'PASS' if size_ok else 'FAIL'}"
         )
         if not size_ok:
