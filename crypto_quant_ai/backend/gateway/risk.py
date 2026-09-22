@@ -52,6 +52,36 @@ class CircuitBreaker:
     def arm(self, equity: float) -> None:
         self._state.reset(equity)
 
+    def export_state(self) -> dict[str, float | bool | str]:
+        return {
+            "triggered": self._state.triggered,
+            "reason": self._state.reason,
+            "day_start_equity": self._state.day_start_equity,
+            "peak_equity": self._state.peak_equity,
+            "day_realized_loss": self._state.day_realized_loss,
+        }
+
+    def restore_state(self, state: dict) -> None:
+        if not isinstance(state, dict):
+            raise ValueError("circuit breaker state must be a dict")
+        triggered = bool(state.get("triggered", False))
+        reason = str(state.get("reason", ""))
+        day_start_equity = float(state.get("day_start_equity", 0.0))
+        peak_equity = float(state.get("peak_equity", 0.0))
+        day_realized_loss = float(state.get("day_realized_loss", 0.0))
+        for name, value in (
+            ("day_start_equity", day_start_equity),
+            ("peak_equity", peak_equity),
+            ("day_realized_loss", day_realized_loss),
+        ):
+            if not math.isfinite(value) or value < 0:
+                raise ValueError(f"{name} must be finite and non-negative")
+        self._state.triggered = triggered
+        self._state.reason = reason
+        self._state.day_start_equity = day_start_equity
+        self._state.peak_equity = peak_equity
+        self._state.day_realized_loss = day_realized_loss
+
     def pre_trade(
         self,
         decision: FinalDecision,

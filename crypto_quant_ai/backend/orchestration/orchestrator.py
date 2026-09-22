@@ -83,44 +83,105 @@ class Stage13Orchestrator:
 
         gateway_hash = compute_gateway_hash(gateway_config)
         session = LiveTradingSession(gateway_config, account=request.account)
-        session.start()
         try:
-            final_decision = self._build_final_decision(
-                market_data, verdict, intelligence, gateway_config, session
-            )
-            evidence = self._collector.collect(
-                intelligence_report=self._research_payload(intelligence, verdict),
-                committee_verdict=verdict,
-                model_contributions=verdict.contributions,
-                replay_metrics=self._replay_payload(intelligence),
-            )
-            contradictions = self._detector.detect(evidence)
-            verification = self._verifier.verify(evidence)
-
-            gateway_result = None
-            gateway_allowed = False
-            block_reason = ""
-            if not verification.approved:
-                block_reason = "; ".join(verification.reasons) or "verification failed"
-            elif final_decision.decision not in ("BUY", "SELL"):
-                block_reason = final_decision.reasoning or "committee did not produce active decision"
-            elif final_decision.decision == "SELL" and not self._has_position(session, final_decision.symbol):
-                block_reason = f"no paper position available for SELL execution: {final_decision.symbol}"
-            else:
-                gateway_allowed = True
-                gateway_result = session.submit_decision(
-                    final_decision, reference_price=market_data.close
-                )
-                if not gateway_result.executed:
-                    block_reason = gateway_result.reason
-
-            reconciliation = session.reconcile()
-            gateway_report = GatewayReportGenerator().build(
-                session, gateway_hash=gateway_hash, reconciliation=reconciliation
+            return self._run_with_session(
+                request=request,
+                candles=candles,
+                gateway_config=gateway_config,
+                gateway_hash=gateway_hash,
+                intelligence=intelligence,
+                market_data=market_data,
+                verdict=verdict,
+                session=session,
+                preserve_state=False,
             )
         finally:
             session.stop()
 
+    def run_with_session(
+        self,
+        request: Stage13Request,
+        session: LiveTradingSession,
+    ) -> Stage13Report:
+        _live_guard()
+        candles = validate_ohlcv(request.candles)
+        if not candles:
+            raise ValueError("Stage13Request requires at least one candle")
+        gateway_config = session.config.model_copy(
+            update={"symbol": request.symbol, "timeframe": request.timeframe}
+        )
+        intelligence = self._analyze_intelligence(request, candles)
+        market_data = self._to_market_data(candles[-1], request.symbol, request.timeframe)
+        committee_cfg = request.committee_config or default_stage13_committee_config()
+        verdict = ModelCommittee(self._build_models(), committee_cfg).evaluate(
+            market_data, intelligence.market_state
+        )
+        return self._run_with_session(
+            request=request,
+            candles=candles,
+            gateway_config=gateway_config,
+            gateway_hash=compute_gateway_hash(gateway_config),
+            intelligence=intelligence,
+            market_data=market_data,
+            verdict=verdict,
+            session=session,
+            preserve_state=True,
+        )
+
+    def _run_with_session(
+        self,
+        *,
+        request: Stage13Request,
+        candles: list[OHLCVBar],
+        gateway_config: GatewayConfig,
+        gateway_hash: str,
+        intelligence: IntelligenceReport,
+        market_data: MarketData,
+        verdict,
+        session: LiveTradingSession,
+        preserve_state: bool,
+    ) -> Stage13Report:
+        committee_cfg = request.committee_config or default_stage13_committee_config()
+        session.start(preserve_state=preserve_state)
+        final_decision = self._build_final_decision(
+            market_data, verdict, intelligence, gateway_config, session
+        )
+        evidence = self._collector.collect(
+            intelligence_report=self._research_payload(intelligence, verdict),
+            committee_verdict=verdict,
+            model_contributions=verdict.contributions,
+            replay_metrics=self._replay_payload(intelligence),
+        )
+        contradictions = self._detector.detect(evidence)
+        verification = self._verifier.verify(evidence)
+
+        gateway_result = None
+        gateway_allowed = False
+        block_reason = ""
+        if not verification.approved:
+            block_reason = "; ".join(verification.reasons) or "verification failed"
+        elif final_decision.decision not in ("BUY", "SELL"):
+            block_reason = (
+                final_decision.reasoning or "committee did not produce active decision"
+            )
+        elif final_decision.decision == "SELL" and not self._has_position(
+            session, final_decision.symbol
+        ):
+            block_reason = (
+                f"no paper position available for SELL execution: {final_decision.symbol}"
+            )
+        else:
+            gateway_allowed = True
+            gateway_result = session.submit_decision(
+                final_decision, reference_price=market_data.close
+            )
+            if not gateway_result.executed:
+                block_reason = gateway_result.reason
+
+        reconciliation = session.reconcile()
+        gateway_report = GatewayReportGenerator().build(
+            session, gateway_hash=gateway_hash, reconciliation=reconciliation
+        )
         request_summary = Stage13RequestSummary(
             symbol=request.symbol,
             timeframe=request.timeframe,
@@ -223,8 +284,8 @@ class Stage13Orchestrator:
             )
 
         entry = float(market_data.close)
-        sl_pct = max(gateway_config.risk_manager.min_stop_loss_pct, 0.005)
-        rr = max(gateway_config.risk_manager.min_risk_reward, 1.5)
+        sl_pct = max(gateway_config.risk_manager.min_stop_loss_pct + 1e-6, 0.005001)
+        rr = max(gateway_config.risk_manager.min_risk_reward + 0.01, 1.51)
         max_notional = min(
             session.account.cash * gateway_config.risk_manager.max_position_fraction,
             gateway_config.circuit_breaker.max_order_notional,

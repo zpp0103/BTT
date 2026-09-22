@@ -62,14 +62,17 @@ class LiveTradingSession:
         *,
         account: Optional[PaperAccount] = None,
         audit_log: Optional[AuditLog] = None,
+        venue_adapter: Optional[ExternalVenueAdapter] = None,
+        circuit_breaker: Optional[CircuitBreaker] = None,
+        initial_order_seq: int = 0,
         alert_sink: Optional[Callable[[str, str], None]] = None,
     ) -> None:
         self._config = config
         self._account = account or PaperAccount(cash=config.initial_cash)
         self._audit_log = audit_log or AuditLog()
-        self._venue = ExternalVenueAdapter()
+        self._venue = venue_adapter or ExternalVenueAdapter()
         self._risk_manager = RiskManager(config.risk_manager, self._account)
-        self._circuit_breaker = CircuitBreaker(config.circuit_breaker)
+        self._circuit_breaker = circuit_breaker or CircuitBreaker(config.circuit_breaker)
         self._monitor = Monitor()
         self._alert_sink = alert_sink
         self._status = GatewayStatus.STOPPED
@@ -78,6 +81,7 @@ class LiveTradingSession:
         self._last_price: Optional[float] = None
         self._executor = PaperExecutor(
             self._account,
+            initial_order_seq=initial_order_seq,
             audit_log=self._audit_log,
             risk_gate=self._risk_manager.gate,
         )
@@ -88,6 +92,10 @@ class LiveTradingSession:
     @property
     def status(self) -> GatewayStatus:
         return self._status
+
+    @property
+    def config(self) -> GatewayConfig:
+        return self._config
 
     @property
     def account(self) -> PaperAccount:
@@ -109,14 +117,23 @@ class LiveTradingSession:
     def venue(self) -> ExternalVenueAdapter:
         return self._venue
 
-    def start(self) -> None:
+    @property
+    def order_sequence(self) -> int:
+        return self._executor.order_sequence
+
+    def start(self, preserve_state: bool = False) -> None:
         if os.environ.get("LIVE_TRADING", "false").lower() in ("true", "1"):
             raise RuntimeError("Cannot start gateway in live trading mode.")
         if self._status == GatewayStatus.RUNNING:
             return
         self._status = GatewayStatus.RUNNING
         self._started_at = datetime.now(timezone.utc)
-        self._circuit_breaker.arm(self._equity())
+        if preserve_state:
+            state = self._circuit_breaker.export_state()
+            if float(state.get("day_start_equity", 0.0) or 0.0) <= 0:
+                self._circuit_breaker.arm(self._equity())
+        else:
+            self._circuit_breaker.arm(self._equity())
 
     def stop(self) -> None:
         self._status = GatewayStatus.STOPPED
