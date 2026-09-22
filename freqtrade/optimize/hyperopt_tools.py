@@ -84,10 +84,12 @@ class HyperoptTools:
             )
 
     @staticmethod
-    def load_params(data: bytes | str) -> dict[str, Any]:
+    def load_params(data: Path | bytes | str) -> dict[str, Any]:
         """
         Load parameters from the raw content of a parameter file
         """
+        if isinstance(data, Path):
+            data = data.read_text()
         return rapidjson.loads(data, number_mode=HYPER_PARAMS_FILE_FORMAT)
 
     @staticmethod
@@ -95,7 +97,7 @@ class HyperoptTools:
         """
         Load parameters from file
         """
-        return HyperoptTools.load_params(filename.read_text())
+        return HyperoptTools.load_params(filename)
 
     @staticmethod
     def try_export_params(config: Config, strategy_name: str, params: dict):

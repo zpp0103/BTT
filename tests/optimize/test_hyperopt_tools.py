@@ -17,6 +17,16 @@ def create_results() -> list[dict]:
     return [{"loss": 1, "result": "foo", "params": {}, "is_best": True}]
 
 
+def test_load_params_accepts_path_and_string(tmp_path) -> None:
+    params_file = tmp_path / "params.json"
+    params_file.write_text('{"strategy_name":"StrategyTestV3"}')
+
+    assert HyperoptTools.load_params(params_file) == {"strategy_name": "StrategyTestV3"}
+    assert HyperoptTools.load_params('{"strategy_name":"StrategyTestV3"}') == {
+        "strategy_name": "StrategyTestV3"
+    }
+
+
 def test_save_results_saves_epochs(hyperopt, tmp_path, caplog) -> None:
     hyperopt.results_file = tmp_path / "ut_results.fthypt"
 
