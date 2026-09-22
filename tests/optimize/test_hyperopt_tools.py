@@ -345,7 +345,7 @@ def test_get_strategy_filename(default_conf, tmp_path):
 
 
 def test_export_params(tmp_path):
-    filename = tmp_path / f"{CURRENT_TEST_STRATEGY}.json"
+    filename = tmp_path / "nested" / f"{CURRENT_TEST_STRATEGY}.json"
     assert not filename.is_file()
     params = {
         "params_details": {
@@ -365,7 +365,6 @@ def test_export_params(tmp_path):
         },
     }
     HyperoptTools.export_params(params, CURRENT_TEST_STRATEGY, filename)
-
     assert filename.is_file()
 
     with filename.open("r") as f:

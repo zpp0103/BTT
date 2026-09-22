@@ -74,6 +74,7 @@ class HyperoptTools:
             "export_time": datetime.now(UTC),
         }
         logger.info(f"Dumping parameters to {filename}")
+        filename.parent.mkdir(parents=True, exist_ok=True)
         with filename.open("w") as f:
             rapidjson.dump(
                 final_params,

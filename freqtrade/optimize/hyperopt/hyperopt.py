@@ -63,6 +63,7 @@ class Hyperopt:
         self.current_best_loss = 100
 
         self.clean_hyperopt()
+        self.results_file.parent.mkdir(parents=True, exist_ok=True)
 
         self.num_epochs_saved = 0
         self.current_best_epoch: dict[str, Any] | None = None
