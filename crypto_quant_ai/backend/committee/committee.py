@@ -21,7 +21,7 @@ from .fusions import (
     unanimous,
     weighted_majority,
 )
-from .policy import gate_active
+from .policy import gate_active, gate_active_reason
 from .router import route_models
 from .types import (
     CommitteeVerdict,
@@ -104,12 +104,13 @@ class ModelCommittee:
                 f"(conf={conf:.2f}, conflict={conflict}, quorum_met={quorum_met})"
             )
 
-        if decision in ("BUY", "SELL") and not gate_active(decision, self.config):
+        gate_reason = gate_active_reason(decision, self.config, stop_loss=None)
+        if decision in ("BUY", "SELL") and not gate_active(
+            decision, self.config, stop_loss=None
+        ):
             decision, conf = "NO_TRADE", 0.0
-            reasoning = (
-                "active decision blocked by policy gate "
-                "(allow_active_decisions=False or missing stop_loss)"
-            )
+            reason_detail = gate_reason or "stop-loss policy requirement unmet"
+            reasoning = f"active decision blocked by policy gate ({reason_detail})"
 
         return CommitteeVerdict(
             final_decision=decision,

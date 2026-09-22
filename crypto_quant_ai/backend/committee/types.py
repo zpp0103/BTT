@@ -69,3 +69,10 @@ class ModelCommitteeConfig:
     require_stop_loss_for_active: bool = False
     routing: bool = False
     fail_closed: bool = True
+
+    def __post_init__(self) -> None:
+        if isinstance(self.fusion, str):
+            try:
+                self.fusion = FusionStrategy(self.fusion)
+            except ValueError as exc:
+                raise ValueError(f"Invalid fusion strategy: {self.fusion}") from exc

@@ -93,6 +93,13 @@ def test_simple_majority_single_buy_no_quorum():
     assert d == "NO_TRADE" and not quorum
 
 
+def test_simple_majority_tie_returns_no_trade():
+    d, _, conflict, quorum = simple_majority(
+        [_c("a", "BUY", 0.5), _c("b", "SELL", 0.5)], quorum=2
+    )
+    assert d == "NO_TRADE" and conflict and quorum
+
+
 def test_unanimous_agree():
     d, conf, conflict, quorum = unanimous([_c("a", "BUY", 0.7), _c("b", "BUY", 0.5)], quorum=2)
     assert d == "BUY" and not conflict and quorum
@@ -134,6 +141,14 @@ def test_gate_blocks_active_when_disallowed():
 def test_gate_allows_active_when_allowed():
     cfg = ModelCommitteeConfig(allow_active_decisions=True)
     assert gate_active("BUY", cfg) is True
+
+
+def test_gate_blocks_stop_loss_policy_when_required():
+    cfg = ModelCommitteeConfig(
+        allow_active_decisions=True,
+        require_stop_loss_for_active=True,
+    )
+    assert gate_active("BUY", cfg, stop_loss=None) is False
 
 
 # ---------------- committee ----------------
@@ -185,6 +200,7 @@ def test_committee_active_blocked_by_policy():
         models, ModelCommitteeConfig(allow_active_decisions=False)
     ).evaluate(_md())
     assert v.final_decision == "NO_TRADE"
+    assert "allow_active_decisions=False" in v.reasoning
 
 
 def test_committee_active_allowed_by_policy():
@@ -274,6 +290,16 @@ def test_committee_to_final_decision():
     v = ModelCommittee(models, cfg).evaluate(_md())
     fd = ModelCommittee(models, cfg).to_final_decision(_md(), v)
     assert fd.decision == "BUY" and fd.symbol == "BTC"
+
+
+def test_committee_config_accepts_string_fusion():
+    cfg = ModelCommitteeConfig(fusion="unanimous")
+    assert cfg.fusion is FusionStrategy.UNANIMOUS
+
+
+def test_committee_config_rejects_invalid_string_fusion():
+    with pytest.raises(ValueError, match="Invalid fusion strategy"):
+        ModelCommitteeConfig(fusion="invalid_fusion")
 
 
 def test_committee_with_real_brains_no_error():

@@ -59,8 +59,8 @@ def simple_majority(contrs, quorum: int = 2):
     quorum_met = active >= quorum
     if active < quorum:
         return "NO_TRADE", 0.0, conflict, False
-    if buy >= sell and buy >= 1:
-        decision = "BUY" if buy > 0 else "NO_TRADE"
+    if buy > sell and buy >= 1:
+        decision = "BUY"
     elif sell > buy:
         decision = "SELL"
     else:
