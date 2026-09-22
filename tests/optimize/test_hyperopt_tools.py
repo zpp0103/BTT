@@ -384,7 +384,7 @@ def test_try_export_params(default_conf, tmp_path, caplog, mocker):
     default_conf["user_data_dir"] = tmp_path
     export_mock = mocker.patch("freqtrade.optimize.hyperopt_tools.HyperoptTools.export_params")
 
-    filename = tmp_path / f"{CURRENT_TEST_STRATEGY}.json"
+    filename = tmp_path / "hyperopt_params" / "strategy_test_v3.json"
     assert not filename.is_file()
     params = {
         "params_details": {
@@ -413,7 +413,29 @@ def test_try_export_params(default_conf, tmp_path, caplog, mocker):
 
     assert export_mock.call_count == 1
     assert export_mock.call_args_list[0][0][1] == CURRENT_TEST_STRATEGY
-    assert export_mock.call_args_list[0][0][2].name == "strategy_test_v3.json"
+    assert export_mock.call_args_list[0][0][2] == tmp_path / "hyperopt_params" / "strategy_test_v3.json"
+
+
+def test_try_export_params_keeps_user_data_paths(default_conf, tmp_path, mocker):
+    default_conf["disableparamexport"] = False
+    default_conf["user_data_dir"] = tmp_path
+    strategy_file = tmp_path / "strategy_test_v3.py"
+    mocker.patch(
+        "freqtrade.optimize.hyperopt_tools.HyperoptTools.get_strategy_filename",
+        return_value=strategy_file,
+    )
+    export_mock = mocker.patch("freqtrade.optimize.hyperopt_tools.HyperoptTools.export_params")
+
+    params = {
+        "params_details": {},
+        "params_not_optimized": {},
+        FTHYPT_FILEVERSION: 2,
+    }
+
+    HyperoptTools.try_export_params(default_conf, CURRENT_TEST_STRATEGY, params)
+
+    assert export_mock.call_count == 1
+    assert export_mock.call_args_list[0][0][2] == strategy_file.with_suffix(".json")
 
 
 def test_params_print(capsys):

@@ -85,6 +85,19 @@ class HyperoptTools:
             )
 
     @staticmethod
+    def _resolve_export_filename(config: Config, strategy_name: str) -> Path | None:
+        fn = HyperoptTools.get_strategy_filename(config, strategy_name)
+        if not fn:
+            return None
+
+        export_filename = fn.with_suffix(".json")
+        user_data_dir = Path(config["user_data_dir"]).resolve()
+        if export_filename.resolve().is_relative_to(user_data_dir):
+            return export_filename
+
+        return user_data_dir / "hyperopt_params" / f"{strategy_name}.json"
+
+    @staticmethod
     def load_params(data: Path | bytes | str) -> dict[str, Any]:
         """
         Load parameters from the raw content of a parameter file
@@ -104,9 +117,9 @@ class HyperoptTools:
     def try_export_params(config: Config, strategy_name: str, params: dict):
         if params.get(FTHYPT_FILEVERSION, 1) >= 2 and not config.get("disableparamexport", False):
             # Export parameters ...
-            fn = HyperoptTools.get_strategy_filename(config, strategy_name)
+            fn = HyperoptTools._resolve_export_filename(config, strategy_name)
             if fn:
-                HyperoptTools.export_params(params, strategy_name, fn.with_suffix(".json"))
+                HyperoptTools.export_params(params, strategy_name, fn)
             else:
                 logger.warning("Strategy not found, not exporting parameter file.")
 
