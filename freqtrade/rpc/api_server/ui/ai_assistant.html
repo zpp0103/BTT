@@ -119,7 +119,7 @@
       <button id="saveRoundtable" type="button">Save Roundtable Config</button>
       <button id="exportRoundtable" type="button">Export Config JSON</button>
       <label class="compact" for="importFile" style="display:block; margin-top:0.75rem;">Import Config JSON</label>
-      <input id="importFile" type="file" accept="application/json,.json">
+      <input id="importFile" type="file" accept="application/json,.json" aria-label="Import Config JSON file">
       <button id="importRoundtable" type="button">Import to Editor (no save)</button>
       <div id="statusMsg" class="muted" style="margin-top: 0.75rem;"></div>
     </div>
@@ -133,6 +133,7 @@
       <h2>Prompt Version History</h2>
       <div class="history-actions">
         <button id="loadHistory" type="button">Load History</button>
+        <label class="compact" for="historySelect">History version</label>
         <select id="historySelect"></select>
         <button id="rollbackHistory" type="button">Rollback to Selected Version</button>
       </div>
