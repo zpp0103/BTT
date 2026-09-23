@@ -175,7 +175,7 @@
     }
 
     function toList(target, entries) {
-      target.innerHTML = "";
+      target.replaceChildren();
       for (const entry of entries) {
         const li = document.createElement("li");
         li.textContent = entry;
@@ -186,7 +186,7 @@
     function renderRoundtable(config, sourceLabel = "") {
       currentRoundtable = structuredClone(config);
       const root = el("roundtableLayers");
-      root.innerHTML = "";
+      root.replaceChildren();
 
       for (const layer of currentRoundtable.layers) {
         const section = document.createElement("section");
@@ -369,7 +369,7 @@
         const data = await fetchJson("/api/v1/ai/assistant/roundtable-config/history");
         historyEntries = data.entries || [];
         const select = el("historySelect");
-        select.innerHTML = "";
+        select.replaceChildren();
         for (const entry of historyEntries) {
           const opt = document.createElement("option");
           opt.value = entry.version_id;

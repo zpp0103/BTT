@@ -170,6 +170,19 @@ def _load_roundtable_history(config) -> list[dict]:
     return valid_entries
 
 
+def _load_roundtable_history_entries_raw(config) -> list[dict]:
+    history_file = _roundtable_history_file(config)
+    if not history_file.is_file():
+        return []
+    try:
+        payload = rapidjson.loads(history_file.read_text(encoding="utf-8"))
+    except Exception:
+        logger.exception("Failed to parse raw roundtable history from %s", history_file)
+        return []
+    entries = payload.get("entries", []) if isinstance(payload, dict) else []
+    return [entry for entry in entries if isinstance(entry, dict)]
+
+
 def _save_roundtable_history(config, entries: list[dict]) -> None:
     history_file = _roundtable_history_file(config)
     history_file.parent.mkdir(parents=True, exist_ok=True)
@@ -180,7 +193,7 @@ def _save_roundtable_history(config, entries: list[dict]) -> None:
 
 
 def _append_roundtable_history_entry_unlocked(config, cfg: dict, source: str) -> None:
-    entries = _load_roundtable_history(config)
+    entries = _load_roundtable_history_entries_raw(config)
     now = datetime.now(UTC)
     entry = {
         "version_id": now.strftime("%Y%m%dT%H%M%S%fZ"),
