@@ -10,6 +10,39 @@ Freqtrade is a free and open source crypto trading bot written in Python. It is 
 
 ![freqtrade](https://raw.githubusercontent.com/freqtrade/freqtrade/develop/docs/assets/freqtrade-screenshot.png)
 
+## 项目介绍书（Project Profile）
+
+本项目（BTT）基于 Freqtrade，定位为“可研究、可回测、可实盘演进”的开源量化交易系统。  
+项目面向策略研究者与工程开发者，提供从数据、策略、评估到执行与运维的完整闭环能力，并重点增强了 AI/FreqAI 扩展能力，便于后续接入外部模型与智能体协作流程。
+
+### 核心优势
+
+1. **开源透明，工程可控**
+   - Python 技术栈，代码结构清晰，便于二次开发与审计。
+   - 配置、策略、接口均可追踪，适合团队协作和持续迭代。
+
+2. **交易全流程能力完整**
+   - 内置数据管理、回测、超参优化、可视化、实盘/模拟交易能力。
+   - 支持多交易所与多运行模式，便于从研究快速过渡到验证。
+
+3. **AI/FreqAI 扩展友好**
+   - 已提供 FreqAI 模型接口、策略回调、REST 扩展点与助手引导接口。
+   - 支持分层 Prompt 圆桌配置（含启用开关、导入导出、历史回滚），便于安全迭代 AI 工作流。
+
+4. **风险控制与安全优先**
+   - 强调先回测、再模拟、后实盘的渐进流程，降低策略上线风险。
+   - 支持配置化风控与状态观测，便于发现并定位异常行为。
+
+5. **运维与开发体验完善**
+   - 支持 WebUI 与 Telegram 管理，配合 API 可实现自动化运维。
+   - 测试体系与文档体系完整，便于快速上手和长期维护。
+
+### 适用场景
+
+- 个人量化策略研究与自动化交易实践  
+- 团队化策略研发与版本化管理  
+- AI/LLM 辅助策略分析与执行前风险评估
+
 ## Disclaimer
 
 This software is for educational purposes only. Do not risk money which
