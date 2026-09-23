@@ -362,7 +362,7 @@
       a.href = url;
       a.download = "roundtable_config.export.json";
       a.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 0);
       setStatus("Roundtable config exported.", "ok");
     }
 
