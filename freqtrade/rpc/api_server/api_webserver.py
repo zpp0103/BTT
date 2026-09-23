@@ -127,6 +127,12 @@ def _load_roundtable_config(config) -> tuple[str, dict]:
         return "user_override", _normalize_roundtable_config(user_cfg)
     except Exception:
         logger.exception("Failed to load user roundtable config from %s", config_file)
+        invalid_file = config_file.with_suffix(f"{config_file.suffix}.invalid")
+        try:
+            config_file.replace(invalid_file)
+            logger.warning("Moved invalid roundtable config to %s", invalid_file)
+        except Exception:
+            logger.exception("Failed to quarantine invalid roundtable config file %s", config_file)
         return "default", _default_roundtable_config()
 
 

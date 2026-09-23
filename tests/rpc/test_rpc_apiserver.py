@@ -3056,6 +3056,8 @@ def test_api_ai_assistant_roundtable_config_fallback_on_invalid_json(botclient, 
     payload = rc.json()
     assert payload["source"] == "default"
     assert payload["config"]["version"] == 1
+    assert not config_file.exists()
+    assert (tmp_path / "ai" / "roundtable_config.json.invalid").exists()
 
 
 def test_api_pairlists_available(botclient, tmp_path):
