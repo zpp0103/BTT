@@ -145,6 +145,25 @@
     const el = (id) => document.getElementById(id);
     let currentRoundtable = null;
     let historyEntries = [];
+    const apiRoutes = {
+      bootstrap: "/api/v1/ai/assistant/bootstrap",
+      roundtableConfig: "/api/v1/ai/assistant/roundtable-config",
+      roundtableHistory: "/api/v1/ai/assistant/roundtable-config/history",
+      roundtableRollback: "/api/v1/ai/assistant/roundtable-config/rollback",
+    };
+
+    function withApiPrefix(path) {
+      if (!path) {
+        return path;
+      }
+      if (path.startsWith("/api/")) {
+        return path;
+      }
+      if (path.startsWith("/")) {
+        return `/api/v1${path}`;
+      }
+      return path;
+    }
 
     function authHeaders(extraHeaders = {}) {
       const username = el("username").value.trim();
@@ -288,10 +307,13 @@
     async function loadBootstrap() {
       setStatus("Loading bootstrap...");
       try {
-        const data = await fetchJson("/api/v1/ai/assistant/bootstrap");
+        const data = await fetchJson(apiRoutes.bootstrap);
+        apiRoutes.roundtableConfig = withApiPrefix(data.roundtable_config_endpoint);
+        apiRoutes.roundtableHistory = withApiPrefix(data.roundtable_history_endpoint);
+        apiRoutes.roundtableRollback = withApiPrefix(data.roundtable_rollback_endpoint);
         setStatus(
-          `Bootstrap loaded. Config endpoint: ${data.roundtable_config_endpoint}. ` +
-          `History endpoint: ${data.roundtable_history_endpoint}.`,
+          `Bootstrap loaded. Config endpoint: ${apiRoutes.roundtableConfig}. ` +
+          `History endpoint: ${apiRoutes.roundtableHistory}.`,
           "ok"
         );
       } catch (err) {
@@ -302,7 +324,7 @@
     async function loadRoundtable() {
       setStatus("Loading roundtable config...");
       try {
-        const data = await fetchJson("/api/v1/ai/assistant/roundtable-config");
+        const data = await fetchJson(apiRoutes.roundtableConfig);
         renderRoundtable(data.config, data.source);
       } catch (err) {
         setStatus(`Roundtable load failed: ${err.message}`, "warn");
@@ -317,7 +339,7 @@
       setStatus("Saving roundtable config...");
       const cfg = collectRoundtableFromUI();
       try {
-        const data = await fetchJson("/api/v1/ai/assistant/roundtable-config", {
+        const data = await fetchJson(apiRoutes.roundtableConfig, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ config: cfg }),
@@ -367,7 +389,7 @@
     async function loadHistory() {
       setStatus("Loading prompt history...");
       try {
-        const data = await fetchJson("/api/v1/ai/assistant/roundtable-config/history");
+        const data = await fetchJson(apiRoutes.roundtableHistory);
         historyEntries = data.entries || [];
         const select = el("historySelect");
         select.replaceChildren();
@@ -395,7 +417,7 @@
       }
       setStatus(`Rolling back to ${versionId}...`);
       try {
-        const data = await fetchJson("/api/v1/ai/assistant/roundtable-config/rollback", {
+        const data = await fetchJson(apiRoutes.roundtableRollback, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ version_id: versionId }),
