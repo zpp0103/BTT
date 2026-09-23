@@ -177,8 +177,25 @@ These scripts will:
 3. Install `requirements-dev.txt`
 4. Install the project in editable mode
 5. Install FreqUI (can be skipped)
+6. Create a desktop-first local config at `user_data/config.local.desktop.json` (Telegram disabled by default)
 
 After installation, they generate helper launchers (`run-backtest.ps1` / `run-backtest.sh`) for quick backtesting startup.
+
+#### Desktop-first run (no Telegram)
+
+Use the generated local config (desktop-focused, no mobile/Telegram dependency):
+
+```bash
+python -m freqtrade backtesting --config user_data/config.local.desktop.json --strategy SampleStrategy
+```
+
+#### Build install packages in CI
+
+The workflow `.github/workflows/desktop-installers.yml` builds:
+- **Windows EXE installer** artifact: `btt-windows-installer.exe`
+- **macOS DMG installer** artifact: `btt-macos-installer.dmg`
+
+Run this workflow from GitHub Actions (`workflow_dispatch`) and download artifacts from the run page.
 
 ## Basic Usage
 

@@ -92,3 +92,17 @@ Write-Host "Next:"
 Write-Host "1) Activate: .\.venv\Scripts\Activate.ps1"
 Write-Host "2) Backtesting help: python -m freqtrade backtesting --help"
 Write-Host "3) Or run helper: .\run-backtest.ps1"
+
+$defaultConfigTemplate = Join-Path $RepoRoot "installers\templates\config.local.desktop.json"
+$defaultConfigTargetDir = Join-Path $RepoRoot "user_data"
+$defaultConfigTarget = Join-Path $defaultConfigTargetDir "config.local.desktop.json"
+if (-not (Test-Path $defaultConfigTargetDir)) {
+    New-Item -ItemType Directory -Path $defaultConfigTargetDir | Out-Null
+}
+if (-not (Test-Path $defaultConfigTarget)) {
+    Copy-Item -Path $defaultConfigTemplate -Destination $defaultConfigTarget
+    Write-Step "Created desktop-first local config: user_data\\config.local.desktop.json"
+}
+else {
+    Write-Step "Desktop-first local config already exists: user_data\\config.local.desktop.json"
+}

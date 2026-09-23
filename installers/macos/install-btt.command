@@ -67,3 +67,13 @@ echo "Next:"
 echo "1) source .venv/bin/activate"
 echo "2) python -m freqtrade backtesting --help"
 echo "3) ./run-backtest.sh"
+
+DEFAULT_TEMPLATE="${REPO_ROOT}/installers/templates/config.local.desktop.json"
+mkdir -p "${REPO_ROOT}/user_data"
+DEFAULT_TARGET="${REPO_ROOT}/user_data/config.local.desktop.json"
+if [[ ! -f "${DEFAULT_TARGET}" ]]; then
+  cp "${DEFAULT_TEMPLATE}" "${DEFAULT_TARGET}"
+  echo "[BTT Installer] Created desktop-first local config: user_data/config.local.desktop.json"
+else
+  echo "[BTT Installer] Desktop-first local config already exists: user_data/config.local.desktop.json"
+fi
