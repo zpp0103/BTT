@@ -402,11 +402,12 @@ def save_ai_assistant_roundtable_config(
     config_file = _roundtable_config_file(config)
     config_file.parent.mkdir(parents=True, exist_ok=True)
     normalized = _normalize_roundtable_config(payload.model_dump()["config"])
-    config_file.write_text(
-        rapidjson.dumps(normalized, indent=2, sort_keys=True),
-        encoding="utf-8",
-    )
-    _append_roundtable_history_entry(config, normalized, source="save")
+    with ROUNDTABLE_HISTORY_LOCK:
+        config_file.write_text(
+            rapidjson.dumps(normalized, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        _append_roundtable_history_entry_unlocked(config, normalized, source="save")
     return {"source": "user_override", "config": normalized}
 
 
@@ -416,7 +417,7 @@ def save_ai_assistant_roundtable_config(
     tags=["FreqAI"],
 )
 def get_ai_assistant_roundtable_history(config=Depends(get_config)):
-    return {"entries": _load_roundtable_history(config)}
+    return {"entries": list(reversed(_load_roundtable_history(config)))}
 
 
 @router.post(

@@ -3143,10 +3143,10 @@ def test_api_ai_assistant_roundtable_history_and_rollback(botclient, tmp_path):
     assert_response(history_rc)
     history = history_rc.json()["entries"]
     assert len(history) == 2
-    assert history[0]["config"]["layers"][0]["agents"][0]["prompt"] == "first prompt"
-    assert history[1]["config"]["layers"][0]["agents"][0]["prompt"] == "second prompt"
+    assert history[0]["config"]["layers"][0]["agents"][0]["prompt"] == "second prompt"
+    assert history[1]["config"]["layers"][0]["agents"][0]["prompt"] == "first prompt"
 
-    rollback_target = history[0]["version_id"]
+    rollback_target = history[1]["version_id"]
     rb_rc = client_post(
         client,
         f"{BASE_URI}/ai/assistant/roundtable-config/rollback",
@@ -3166,7 +3166,7 @@ def test_api_ai_assistant_roundtable_history_and_rollback(botclient, tmp_path):
     assert_response(history_rc2)
     history2 = history_rc2.json()["entries"]
     assert len(history2) == 3
-    assert history2[-1]["source"] == "rollback"
+    assert history2[0]["source"] == "rollback"
 
 
 def test_api_ai_assistant_roundtable_rollback_not_found(botclient, tmp_path):
