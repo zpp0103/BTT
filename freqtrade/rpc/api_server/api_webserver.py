@@ -5,6 +5,9 @@ from fastapi import APIRouter, Depends
 from freqtrade.data.history.datahandlers import get_datahandler
 from freqtrade.enums import CandleType, TradingMode
 from freqtrade.rpc.api_server.api_schemas import (
+    AIAssistantBootstrapResponse,
+    AIAssistantEndpointInfo,
+    AIAssistantExtensionPoint,
     AIContextResponse,
     AvailablePairs,
     ExchangeListResponse,
@@ -106,6 +109,68 @@ def get_ai_context(config=Depends(get_config)):
             "/freqaimodels",
             "/sysinfo",
             "/health",
+        ],
+    }
+
+
+@router.get("/ai/assistant/bootstrap", response_model=AIAssistantBootstrapResponse, tags=["FreqAI"])
+def get_ai_assistant_bootstrap(config=Depends(get_config)):
+    ai_context = get_ai_context(config=config)
+
+    extension_points = [
+        AIAssistantExtensionPoint(
+            key="freqai_model_interface",
+            title="FreqAI model interface",
+            docs_path="docs/freqai-developers.md",
+            summary=(
+                "Use IFreqaiModel fit/train/predict and model resolver integration "
+                "for external model providers."
+            ),
+        ),
+        AIAssistantExtensionPoint(
+            key="strategy_callbacks",
+            title="Strategy callbacks",
+            docs_path="docs/strategy-callbacks.md",
+            summary="Use callbacks for bounded, deterministic AI-assisted filters and checks.",
+        ),
+        AIAssistantExtensionPoint(
+            key="custom_pipelines",
+            title="Custom feature pipelines",
+            docs_path="docs/freqai-feature-engineering.md",
+            summary=(
+                "Extend define_data_pipeline/define_label_pipeline for external "
+                "AI-derived features."
+            ),
+        ),
+        AIAssistantExtensionPoint(
+            key="rest_api",
+            title="REST API discovery",
+            docs_path="docs/rest-api.md",
+            summary="Use read-only API endpoints first before any automated actions.",
+        ),
+    ]
+    endpoint_details = [
+        AIAssistantEndpointInfo(path="/show_config", purpose="Runtime configuration snapshot."),
+        AIAssistantEndpointInfo(path="/status", purpose="Open trade status."),
+        AIAssistantEndpointInfo(path="/logs", purpose="Recent bot log lines."),
+        AIAssistantEndpointInfo(path="/entries", purpose="Entry-tag performance summary."),
+        AIAssistantEndpointInfo(path="/exits", purpose="Exit-reason performance summary."),
+        AIAssistantEndpointInfo(path="/mix_tags", purpose="Entry/exit combination stats."),
+        AIAssistantEndpointInfo(path="/strategies", purpose="Discover available strategies."),
+        AIAssistantEndpointInfo(path="/freqaimodels", purpose="Discover available FreqAI models."),
+        AIAssistantEndpointInfo(path="/sysinfo", purpose="System load and health context."),
+        AIAssistantEndpointInfo(path="/health", purpose="Bot loop freshness in trade mode."),
+    ]
+
+    return {
+        "ai_context": ai_context,
+        "extension_points": extension_points,
+        "readonly_endpoint_details": endpoint_details,
+        "safe_workflow": [
+            "Start with read-only endpoints and validate assumptions.",
+            "Test strategy/model changes in backtesting and dry-run first.",
+            "Keep deterministic fallback behavior if external AI is unavailable.",
+            "Promote to live only after stable repeated results.",
         ],
     }
 

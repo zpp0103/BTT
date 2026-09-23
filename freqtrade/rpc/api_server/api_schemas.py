@@ -539,6 +539,25 @@ class AIContextResponse(BaseModel):
     recommended_readonly_endpoints: list[str]
 
 
+class AIAssistantEndpointInfo(BaseModel):
+    path: str
+    purpose: str
+
+
+class AIAssistantExtensionPoint(BaseModel):
+    key: str
+    title: str
+    docs_path: str
+    summary: str
+
+
+class AIAssistantBootstrapResponse(BaseModel):
+    ai_context: AIContextResponse
+    extension_points: list[AIAssistantExtensionPoint]
+    readonly_endpoint_details: list[AIAssistantEndpointInfo]
+    safe_workflow: list[str]
+
+
 class __StrategyParameter(BaseModel):
     param_type: str
     name: str

@@ -2948,6 +2948,38 @@ def test_api_ai_context(botclient, tmp_path, mocker):
     }
 
 
+def test_api_ai_assistant_bootstrap(botclient, tmp_path, mocker):
+    ftbot, client = botclient
+    ftbot.config["user_data_dir"] = tmp_path
+    ftbot.config["runmode"] = RunMode.WEBSERVER
+    ftbot.config["strategy"] = "SampleStrategy"
+    ftbot.config["freqaimodel"] = "LightGBMRegressor"
+    ftbot.config["freqai"] = {"enabled": True}
+
+    mocker.patch(
+        "freqtrade.resolvers.strategy_resolver.StrategyResolver.search_all_objects",
+        return_value=[{"name": "SampleStrategy"}, {"name": "OtherStrategy"}],
+    )
+    mocker.patch(
+        "freqtrade.resolvers.freqaimodel_resolver.FreqaiModelResolver.search_all_objects",
+        return_value=[{"name": "LightGBMRegressor"}, {"name": "XGBoostRegressor"}],
+    )
+
+    rc = client_get(client, f"{BASE_URI}/ai/assistant/bootstrap")
+    assert_response(rc)
+
+    response = rc.json()
+    assert response["ai_context"]["ai_enabled"] is True
+    assert response["ai_context"]["configured_strategy"] == "SampleStrategy"
+    assert response["ai_context"]["configured_freqaimodel"] == "LightGBMRegressor"
+    assert response["ai_context"]["strategies"] == ["OtherStrategy", "SampleStrategy"]
+    assert response["ai_context"]["freqaimodels"] == ["LightGBMRegressor", "XGBoostRegressor"]
+    assert any(x["path"] == "/show_config" for x in response["readonly_endpoint_details"])
+    assert any(x["path"] == "/freqaimodels" for x in response["readonly_endpoint_details"])
+    assert any(x["key"] == "freqai_model_interface" for x in response["extension_points"])
+    assert "Start with read-only endpoints and validate assumptions." in response["safe_workflow"]
+
+
 def test_api_pairlists_available(botclient, tmp_path):
     ftbot, client = botclient
     ftbot.config["user_data_dir"] = tmp_path
