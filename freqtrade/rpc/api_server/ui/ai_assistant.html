@@ -382,10 +382,10 @@
       a.style.display = "none";
       document.body.appendChild(a);
       a.click();
-      setTimeout(() => {
-        a.remove();
+      a.remove();
+      requestAnimationFrame(() => {
         URL.revokeObjectURL(url);
-      }, 1000);
+      });
       setStatus("Roundtable config exported.", "ok");
     }
 
