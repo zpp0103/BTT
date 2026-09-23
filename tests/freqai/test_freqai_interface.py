@@ -10,6 +10,7 @@ from freqtrade.data.dataprovider import DataProvider
 from freqtrade.enums import RunMode
 from freqtrade.exceptions import OperationalException
 from freqtrade.freqai.data_kitchen import FreqaiDataKitchen
+from freqtrade.freqai.freqai_interface import IFreqaiModel
 from freqtrade.freqai.utils import download_all_data_for_training, get_required_data_timerange
 from freqtrade.optimize.backtesting import Backtesting
 from freqtrade.persistence import Trade
@@ -29,11 +30,46 @@ from tests.freqai.conftest import (
 )
 
 
+class DummyFreqaiModel(IFreqaiModel):
+    def train(self, unfiltered_df, pair, dk, **kwargs):
+        raise NotImplementedError
+
+    def fit(self, data_dictionary, dk, **kwargs):
+        raise NotImplementedError
+
+    def predict(self, unfiltered_df, dk, **kwargs):
+        raise NotImplementedError
+
+
 def can_run_model(model: str) -> None:
     is_pytorch_model = "Reinforcement" in model or "PyTorch" in model
 
     if is_pytorch_model and is_mac():
         pytest.skip("Reinforcement learning / PyTorch module not available on intel based Mac OS.")
+
+
+def test_coerce_prediction_output_reshapes_1d_single_column():
+    model = object.__new__(DummyFreqaiModel)
+
+    predictions = model.coerce_prediction_output([1.0, 2.0, 3.0], expected_columns=1)
+
+    assert predictions.shape == (3, 1)
+
+
+def test_coerce_prediction_output_validates_expected_rows():
+    model = object.__new__(DummyFreqaiModel)
+
+    with pytest.raises(OperationalException, match="unexpected number of rows"):
+        model.coerce_prediction_output(
+            [[1.0, 2.0], [3.0, 4.0]], expected_columns=2, expected_rows=1
+        )
+
+
+def test_coerce_prediction_output_rejects_invalid_1d_shape():
+    model = object.__new__(DummyFreqaiModel)
+
+    with pytest.raises(OperationalException, match="Cannot reshape predictions"):
+        model.coerce_prediction_output([1.0, 2.0, 3.0], expected_columns=2)
 
 
 @pytest.mark.parametrize(
