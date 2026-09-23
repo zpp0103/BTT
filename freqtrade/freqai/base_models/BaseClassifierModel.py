@@ -114,6 +114,7 @@ class BaseClassifierModel(IFreqaiModel):
             self.model.predict(dk.data_dictionary["prediction_features"]),
             len(dk.label_list),
             expected_rows=expected_rows,
+            allow_1d_multicolumn=self.CONV_WIDTH == 1,
         )
 
         pred_df = DataFrame(predictions, columns=dk.label_list)
@@ -122,6 +123,7 @@ class BaseClassifierModel(IFreqaiModel):
             self.model.predict_proba(dk.data_dictionary["prediction_features"]),
             len(self.model.classes_),
             expected_rows=expected_rows,
+            allow_1d_multicolumn=self.CONV_WIDTH == 1,
             output_name="prediction probabilities",
         )
         pred_df_prob = DataFrame(predictions_prob, columns=self.model.classes_)

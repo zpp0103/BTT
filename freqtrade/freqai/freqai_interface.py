@@ -596,6 +596,7 @@ class IFreqaiModel(ABC):
         expected_columns: int,
         *,
         expected_rows: int | None = None,
+        allow_1d_multicolumn: bool = False,
         output_name: str = "predictions",
     ) -> NDArray[Any]:
         """
@@ -614,7 +615,7 @@ class IFreqaiModel(ABC):
         if pred_array.ndim == 1:
             if expected_columns == 1:
                 pred_array = pred_array.reshape(-1, 1)
-            elif pred_array.size % expected_columns == 0:
+            elif allow_1d_multicolumn and pred_array.size % expected_columns == 0:
                 pred_array = pred_array.reshape(-1, expected_columns)
             else:
                 raise OperationalException(

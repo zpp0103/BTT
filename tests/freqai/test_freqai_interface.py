@@ -3,12 +3,15 @@ import shutil
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
+from pandas import DataFrame
 
 from freqtrade.configuration import TimeRange
 from freqtrade.data.dataprovider import DataProvider
 from freqtrade.enums import RunMode
 from freqtrade.exceptions import OperationalException
+from freqtrade.freqai.base_models.BaseClassifierModel import BaseClassifierModel
 from freqtrade.freqai.data_kitchen import FreqaiDataKitchen
 from freqtrade.freqai.freqai_interface import IFreqaiModel
 from freqtrade.freqai.utils import download_all_data_for_training, get_required_data_timerange
@@ -41,6 +44,35 @@ class DummyFreqaiModel(IFreqaiModel):
         raise NotImplementedError
 
 
+class DummyBaseClassifierModel(BaseClassifierModel):
+    def fit(self, data_dictionary, dk, **kwargs):
+        raise NotImplementedError
+
+
+class DummyFeaturePipeline:
+    def transform(self, features, outlier_check=False):
+        outliers = np.ones(len(features), dtype=np.int_)
+        return features, outliers, None
+
+    def __getitem__(self, key):
+        if key == "di":
+            return
+        raise KeyError(key)
+
+
+def _make_minimal_classifier_dk() -> MagicMock:
+    dk = MagicMock()
+    dk.training_features_list = ["f0", "f1"]
+    dk.label_list = ["&-s_up", "&-s_down"]
+    dk.data_dictionary = {}
+    dk.find_features = MagicMock()
+    dk.filter_features = MagicMock(
+        return_value=(DataFrame({"f0": [1.0, 2.0], "f1": [3.0, 4.0]}), None)
+    )
+    dk.feature_pipeline = DummyFeaturePipeline()
+    return dk
+
+
 def can_run_model(model: str) -> None:
     is_pytorch_model = "Reinforcement" in model or "PyTorch" in model
 
@@ -70,6 +102,36 @@ def test_coerce_prediction_output_rejects_invalid_1d_shape():
 
     with pytest.raises(OperationalException, match="Cannot reshape predictions"):
         model.coerce_prediction_output([1.0, 2.0, 3.0], expected_columns=2)
+
+
+def test_base_classifier_predict_coerces_flat_probability_output():
+    model = object.__new__(DummyBaseClassifierModel)
+    model.CONV_WIDTH = 1
+    model.model = MagicMock()
+    model.model.classes_ = ["up", "down"]
+    model.model.predict.return_value = [1, 0, 0, 1]
+    model.model.predict_proba.return_value = [0.9, 0.1, 0.2, 0.8]
+
+    dk = _make_minimal_classifier_dk()
+    pred_df, do_predict = model.predict(DataFrame({"f0": [1.0, 2.0]}), dk)
+
+    assert list(pred_df.columns) == ["&-s_up", "&-s_down", "up", "down"]
+    assert pred_df.shape == (2, 4)
+    assert do_predict.shape == (2,)
+
+
+def test_base_classifier_predict_rejects_invalid_probability_shape():
+    model = object.__new__(DummyBaseClassifierModel)
+    model.CONV_WIDTH = 1
+    model.model = MagicMock()
+    model.model.classes_ = ["up", "down"]
+    model.model.predict.return_value = [1, 0, 0, 1]
+    model.model.predict_proba.return_value = [0.9, 0.1, 0.2]
+
+    dk = _make_minimal_classifier_dk()
+
+    with pytest.raises(OperationalException, match="prediction probabilities"):
+        model.predict(DataFrame({"f0": [1.0, 2.0]}), dk)
 
 
 @pytest.mark.parametrize(
