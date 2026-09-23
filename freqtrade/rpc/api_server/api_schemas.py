@@ -557,12 +557,15 @@ class AIAssistantBootstrapResponse(BaseModel):
     readonly_endpoint_details: list[AIAssistantEndpointInfo]
     safe_workflow: list[str]
     roundtable_config_endpoint: str | None = None
+    roundtable_history_endpoint: str | None = None
+    roundtable_rollback_endpoint: str | None = None
 
 
 class AIRoundtableAgent(BaseModel):
     agent_id: str
     name: str
     prompt: str
+    enabled: bool = True
     editable: bool = True
 
 
@@ -570,6 +573,7 @@ class AIRoundtableLayer(BaseModel):
     layer_id: str
     title: str
     description: str | None = None
+    enabled: bool = True
     agents: list[AIRoundtableAgent]
 
 
@@ -585,6 +589,21 @@ class AIRoundtableConfigPayload(BaseModel):
 class AIRoundtableConfigResponse(BaseModel):
     source: Literal["default", "user_override"]
     config: AIRoundtableConfig
+
+
+class AIRoundtableHistoryEntry(BaseModel):
+    version_id: str
+    saved_at: str
+    source: Literal["save", "rollback"]
+    config: AIRoundtableConfig
+
+
+class AIRoundtableHistoryResponse(BaseModel):
+    entries: list[AIRoundtableHistoryEntry]
+
+
+class AIRoundtableRollbackPayload(BaseModel):
+    version_id: str
 
 
 class __StrategyParameter(BaseModel):
