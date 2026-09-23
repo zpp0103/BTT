@@ -1,5 +1,7 @@
 import logging
+from pathlib import Path
 
+import rapidjson
 from fastapi import APIRouter, Depends
 
 from freqtrade.data.history.datahandlers import get_datahandler
@@ -9,6 +11,8 @@ from freqtrade.rpc.api_server.api_schemas import (
     AIAssistantEndpointInfo,
     AIAssistantExtensionPoint,
     AIContextResponse,
+    AIRoundtableConfigPayload,
+    AIRoundtableConfigResponse,
     AvailablePairs,
     ExchangeListResponse,
     FreqAIModelListResponse,
@@ -19,9 +23,107 @@ from freqtrade.rpc.api_server.deps import get_config
 
 
 logger = logging.getLogger(__name__)
+ROUNDTABLE_CONFIG_PATH = Path("ai") / "roundtable_config.json"
 
 # Private API, protected by authentication and webserver_mode dependency
 router = APIRouter()
+
+
+def _default_roundtable_config() -> dict:
+    return {
+        "version": 1,
+        "layers": [
+            {
+                "layer_id": "signal_research",
+                "title": "Signal Research Layer",
+                "description": "Generates candidate directional or market-state hypotheses.",
+                "agents": [
+                    {
+                        "agent_id": "market_observer",
+                        "name": "Market Observer",
+                        "prompt": (
+                            "Analyze recent market structure and describe key directional "
+                            "signals and uncertainty."
+                        ),
+                        "editable": True,
+                    },
+                    {
+                        "agent_id": "feature_analyst",
+                        "name": "Feature Analyst",
+                        "prompt": (
+                            "Review available indicators/features and summarize the strongest "
+                            "predictive candidates."
+                        ),
+                        "editable": True,
+                    },
+                ],
+            },
+            {
+                "layer_id": "risk_discussion",
+                "title": "Risk Discussion Layer",
+                "description": "Challenges assumptions and estimates downside risk.",
+                "agents": [
+                    {
+                        "agent_id": "risk_guardian",
+                        "name": "Risk Guardian",
+                        "prompt": (
+                            "Identify failure modes, overfitting risks, and conditions where "
+                            "signals should be rejected."
+                        ),
+                        "editable": True,
+                    },
+                    {
+                        "agent_id": "liquidity_checker",
+                        "name": "Liquidity Checker",
+                        "prompt": (
+                            "Assess liquidity, spread, and execution risk impacts on the idea."
+                        ),
+                        "editable": True,
+                    },
+                ],
+            },
+            {
+                "layer_id": "decision_synthesis",
+                "title": "Decision Synthesis Layer",
+                "description": "Produces a consolidated recommendation with guardrails.",
+                "agents": [
+                    {
+                        "agent_id": "moderator",
+                        "name": "Roundtable Moderator",
+                        "prompt": (
+                            "Synthesize all layer outputs into a clear recommendation and list "
+                            "required safeguards before action."
+                        ),
+                        "editable": True,
+                    }
+                ],
+            },
+        ],
+    }
+
+
+def _roundtable_config_file(config) -> Path:
+    return Path(config["user_data_dir"]) / ROUNDTABLE_CONFIG_PATH
+
+
+def _normalize_roundtable_config(raw_config: dict) -> dict:
+    cfg = AIRoundtableConfigPayload(config=raw_config).config.model_dump()
+    for layer in cfg.get("layers", []):
+        for agent in layer.get("agents", []):
+            agent["editable"] = True
+    return cfg
+
+
+def _load_roundtable_config(config) -> tuple[str, dict]:
+    config_file = _roundtable_config_file(config)
+    if not config_file.is_file():
+        return "default", _default_roundtable_config()
+    try:
+        user_cfg = rapidjson.loads(config_file.read_text(encoding="utf-8"))
+        return "user_override", _normalize_roundtable_config(user_cfg)
+    except Exception:
+        logger.exception("Failed to load user roundtable config from %s", config_file)
+        return "default", _default_roundtable_config()
 
 
 @router.get("/strategies", response_model=StrategyListResponse, tags=["Strategy"])
@@ -172,7 +274,33 @@ def get_ai_assistant_bootstrap(config=Depends(get_config)):
             "Keep deterministic fallback behavior if external AI is unavailable.",
             "Promote to live only after stable repeated results.",
         ],
+        "roundtable_config_endpoint": "/ai/assistant/roundtable-config",
     }
+
+
+@router.get(
+    "/ai/assistant/roundtable-config", response_model=AIRoundtableConfigResponse, tags=["FreqAI"]
+)
+def get_ai_assistant_roundtable_config(config=Depends(get_config)):
+    source, cfg = _load_roundtable_config(config)
+    return {"source": source, "config": cfg}
+
+
+@router.post(
+    "/ai/assistant/roundtable-config", response_model=AIRoundtableConfigResponse, tags=["FreqAI"]
+)
+def save_ai_assistant_roundtable_config(
+    payload: AIRoundtableConfigPayload,
+    config=Depends(get_config),
+):
+    config_file = _roundtable_config_file(config)
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    normalized = _normalize_roundtable_config(payload.model_dump()["config"])
+    config_file.write_text(
+        rapidjson.dumps(normalized, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    return {"source": "user_override", "config": normalized}
 
 
 @router.get(

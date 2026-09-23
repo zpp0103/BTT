@@ -176,9 +176,8 @@ def test_api_ui_fallback(botclient, mocker):
 
     rc = client_get(client, "/ai-assistant")
     assert rc.status_code == 200
-    assert "AI Assistant Bootstrap (Read-Only)" in rc.text
-    assert "Status Summary" in rc.text
-    assert "Log Summary" in rc.text
+    assert "Editable Roundtable Prompts" in rc.text
+    assert "Roundtable Prompt Layers (Editable)" in rc.text
     assert "System Summary" in rc.text
 
     # Forwarded to fallback_html or index.html (depending if it's installed or not)
@@ -2986,6 +2985,61 @@ def test_api_ai_assistant_bootstrap(botclient, tmp_path, mocker):
     assert any(x["path"] == "/freqaimodels" for x in response["readonly_endpoint_details"])
     assert any(x["key"] == "freqai_model_interface" for x in response["extension_points"])
     assert "Start with read-only endpoints and validate assumptions." in response["safe_workflow"]
+    assert response["roundtable_config_endpoint"] == "/ai/assistant/roundtable-config"
+
+
+def test_api_ai_assistant_roundtable_config_get_default(botclient, tmp_path):
+    ftbot, client = botclient
+    ftbot.config["user_data_dir"] = tmp_path
+    ftbot.config["runmode"] = RunMode.WEBSERVER
+
+    rc = client_get(client, f"{BASE_URI}/ai/assistant/roundtable-config")
+    assert_response(rc)
+
+    payload = rc.json()
+    assert payload["source"] == "default"
+    assert payload["config"]["version"] == 1
+    assert len(payload["config"]["layers"]) >= 1
+    assert payload["config"]["layers"][0]["agents"][0]["editable"] is True
+
+
+def test_api_ai_assistant_roundtable_config_post_persist(botclient, tmp_path):
+    ftbot, client = botclient
+    ftbot.config["user_data_dir"] = tmp_path
+    ftbot.config["runmode"] = RunMode.WEBSERVER
+
+    update_payload = {
+        "config": {
+            "version": 1,
+            "layers": [
+                {
+                    "layer_id": "l1",
+                    "title": "Layer One",
+                    "description": "test",
+                    "agents": [
+                        {
+                            "agent_id": "a1",
+                            "name": "Analyst",
+                            "prompt": "new prompt content",
+                            "editable": False,
+                        }
+                    ],
+                }
+            ],
+        }
+    }
+
+    rc = client_post(client, f"{BASE_URI}/ai/assistant/roundtable-config", update_payload)
+    assert_response(rc)
+    body = rc.json()
+    assert body["source"] == "user_override"
+    assert body["config"]["layers"][0]["agents"][0]["prompt"] == "new prompt content"
+    assert body["config"]["layers"][0]["agents"][0]["editable"] is True
+
+    rc2 = client_get(client, f"{BASE_URI}/ai/assistant/roundtable-config")
+    assert_response(rc2)
+    assert rc2.json()["source"] == "user_override"
+    assert rc2.json()["config"]["layers"][0]["agents"][0]["prompt"] == "new prompt content"
 
 
 def test_api_pairlists_available(botclient, tmp_path):

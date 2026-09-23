@@ -556,6 +556,35 @@ class AIAssistantBootstrapResponse(BaseModel):
     extension_points: list[AIAssistantExtensionPoint]
     readonly_endpoint_details: list[AIAssistantEndpointInfo]
     safe_workflow: list[str]
+    roundtable_config_endpoint: str | None = None
+
+
+class AIRoundtableAgent(BaseModel):
+    agent_id: str
+    name: str
+    prompt: str
+    editable: bool = True
+
+
+class AIRoundtableLayer(BaseModel):
+    layer_id: str
+    title: str
+    description: str | None = None
+    agents: list[AIRoundtableAgent]
+
+
+class AIRoundtableConfig(BaseModel):
+    version: int = 1
+    layers: list[AIRoundtableLayer]
+
+
+class AIRoundtableConfigPayload(BaseModel):
+    config: AIRoundtableConfig
+
+
+class AIRoundtableConfigResponse(BaseModel):
+    source: Literal["default", "user_override"]
+    config: AIRoundtableConfig
 
 
 class __StrategyParameter(BaseModel):

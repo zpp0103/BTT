@@ -171,7 +171,7 @@ All endpoints in the below table need to be prefixed with the base URL of the AP
 For external AI assistants, these endpoints are usually the first integration layer:
 
 * Runtime state and diagnostics: `/status`, `/count`, `/profit`, `/logs`, `/sysinfo`, `/health`
-* Strategy/model discovery: `/strategies`, `/freqaimodels`, `/show_config`, `/ai/context`, `/ai/assistant/bootstrap`
+* Strategy/model discovery: `/strategies`, `/freqaimodels`, `/show_config`, `/ai/context`, `/ai/assistant/bootstrap`, `/ai/assistant/roundtable-config`
 * Signal and performance summaries: `/entries`, `/exits`, `/mix_tags`, `/performance`
 * Data access for external analysis pipelines: `/pair_candles`, `/pair_history`, `/available_pairs`
 
@@ -222,6 +222,8 @@ Recommended approach: start with read-only analysis endpoints, validate behavior
 | `/strategy/<strategy>` | GET | Get specific Strategy content by strategy class name.<br/>*Params:*<br/>- `<strategy>` (`str`)
 | `/ai/context` | GET | Read-only AI integration context snapshot (configured strategy/model, available strategies/models, and recommended read-only endpoints for assistants). |
 | `/ai/assistant/bootstrap` | GET | Read-only AI assistant bootstrap payload (AI context + extension points + endpoint metadata + safe workflow checklist). |
+| `/ai/assistant/roundtable-config` | GET | Get editable hierarchical roundtable prompt config (layers + agents). Returns default or saved user override. |
+| `/ai/assistant/roundtable-config` | POST | Save editable hierarchical roundtable prompt config (layers + agents). |
 | `/available_pairs` | GET | List available backtest data.
 | `/version` | GET | Show version.
 | `/sysinfo` | GET | Show information about the system load.
