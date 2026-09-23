@@ -529,6 +529,16 @@ class FreqAIModelListResponse(BaseModel):
     freqaimodels: list[str]
 
 
+class AIContextResponse(BaseModel):
+    ai_enabled: bool
+    has_freqai_config: bool
+    configured_strategy: str | None = None
+    configured_freqaimodel: str | None = None
+    strategies: list[str]
+    freqaimodels: list[str]
+    recommended_readonly_endpoints: list[str]
+
+
 class __StrategyParameter(BaseModel):
     param_type: str
     name: str

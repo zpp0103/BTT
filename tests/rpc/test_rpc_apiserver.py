@@ -2906,6 +2906,48 @@ def test_api_freqaimodels(botclient, tmp_path, mocker):
     }
 
 
+def test_api_ai_context(botclient, tmp_path, mocker):
+    ftbot, client = botclient
+    ftbot.config["user_data_dir"] = tmp_path
+    ftbot.config["runmode"] = RunMode.WEBSERVER
+    ftbot.config["strategy"] = "SampleStrategy"
+    ftbot.config["freqaimodel"] = "LightGBMRegressor"
+    ftbot.config["freqai"] = {"enabled": True}
+
+    mocker.patch(
+        "freqtrade.resolvers.strategy_resolver.StrategyResolver.search_all_objects",
+        return_value=[{"name": "SampleStrategy"}, {"name": "OtherStrategy"}],
+    )
+    mocker.patch(
+        "freqtrade.resolvers.freqaimodel_resolver.FreqaiModelResolver.search_all_objects",
+        return_value=[{"name": "LightGBMRegressor"}, {"name": "XGBoostRegressor"}],
+    )
+
+    rc = client_get(client, f"{BASE_URI}/ai/context")
+
+    assert_response(rc)
+    assert rc.json() == {
+        "ai_enabled": True,
+        "has_freqai_config": True,
+        "configured_strategy": "SampleStrategy",
+        "configured_freqaimodel": "LightGBMRegressor",
+        "strategies": ["OtherStrategy", "SampleStrategy"],
+        "freqaimodels": ["LightGBMRegressor", "XGBoostRegressor"],
+        "recommended_readonly_endpoints": [
+            "/show_config",
+            "/status",
+            "/logs",
+            "/entries",
+            "/exits",
+            "/mix_tags",
+            "/strategies",
+            "/freqaimodels",
+            "/sysinfo",
+            "/health",
+        ],
+    }
+
+
 def test_api_pairlists_available(botclient, tmp_path):
     ftbot, client = botclient
     ftbot.config["user_data_dir"] = tmp_path

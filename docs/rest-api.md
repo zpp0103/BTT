@@ -171,7 +171,7 @@ All endpoints in the below table need to be prefixed with the base URL of the AP
 For external AI assistants, these endpoints are usually the first integration layer:
 
 * Runtime state and diagnostics: `/status`, `/count`, `/profit`, `/logs`, `/sysinfo`, `/health`
-* Strategy/model discovery: `/strategies`, `/freqaimodels`, `/show_config`
+* Strategy/model discovery: `/strategies`, `/freqaimodels`, `/show_config`, `/ai/context`
 * Signal and performance summaries: `/entries`, `/exits`, `/mix_tags`, `/performance`
 * Data access for external analysis pipelines: `/pair_candles`, `/pair_history`, `/available_pairs`
 
@@ -220,6 +220,7 @@ Recommended approach: start with read-only analysis endpoints, validate behavior
 | `/plot_config` | GET | Get plot config from the strategy (or nothing if not configured).
 | `/strategies` | GET | List strategies in strategy directory.
 | `/strategy/<strategy>` | GET | Get specific Strategy content by strategy class name.<br/>*Params:*<br/>- `<strategy>` (`str`)
+| `/ai/context` | GET | Read-only AI integration context snapshot (configured strategy/model, available strategies/models, and recommended read-only endpoints for assistants). |
 | `/available_pairs` | GET | List available backtest data.
 | `/version` | GET | Show version.
 | `/sysinfo` | GET | Show information about the system load.

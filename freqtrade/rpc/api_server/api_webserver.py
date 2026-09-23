@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends
 from freqtrade.data.history.datahandlers import get_datahandler
 from freqtrade.enums import CandleType, TradingMode
 from freqtrade.rpc.api_server.api_schemas import (
+    AIContextResponse,
     AvailablePairs,
     ExchangeListResponse,
     FreqAIModelListResponse,
@@ -72,6 +73,41 @@ def list_freqaimodels(config=Depends(get_config)):
     models = sorted(models, key=lambda x: x["name"])
 
     return {"freqaimodels": [x["name"] for x in models]}
+
+
+@router.get("/ai/context", response_model=AIContextResponse, tags=["FreqAI"])
+def get_ai_context(config=Depends(get_config)):
+    from freqtrade.resolvers.freqaimodel_resolver import FreqaiModelResolver
+    from freqtrade.resolvers.strategy_resolver import StrategyResolver
+
+    strategies = StrategyResolver.search_all_objects(
+        config, False, config.get("recursive_strategy_search", False)
+    )
+    strategies = sorted(strategies, key=lambda x: x["name"])
+
+    models = FreqaiModelResolver.search_all_objects(config, False)
+    models = sorted(models, key=lambda x: x["name"])
+
+    return {
+        "ai_enabled": bool(config.get("freqai", {}).get("enabled", False)),
+        "has_freqai_config": bool(config.get("freqai")),
+        "configured_strategy": config.get("strategy"),
+        "configured_freqaimodel": config.get("freqaimodel"),
+        "strategies": [x["name"] for x in strategies],
+        "freqaimodels": [x["name"] for x in models],
+        "recommended_readonly_endpoints": [
+            "/show_config",
+            "/status",
+            "/logs",
+            "/entries",
+            "/exits",
+            "/mix_tags",
+            "/strategies",
+            "/freqaimodels",
+            "/sysinfo",
+            "/health",
+        ],
+    }
 
 
 @router.get(
