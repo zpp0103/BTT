@@ -209,6 +209,8 @@ chmod +x /home/runner/work/BTT/BTT/installers/macos/install-btt.command
 bash /home/runner/work/BTT/BTT/installers/macos/build-dmg.sh
 ```
 
+`build-dmg.sh` must run on macOS and requires `rsync` + `hdiutil`.
+
 Output:
 
 ```text

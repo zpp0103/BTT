@@ -6,6 +6,27 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 DIST_DIR="${REPO_ROOT}/dist"
 STAGE_DIR="${DIST_DIR}/btt-macos-stage"
 DMG_PATH="${DIST_DIR}/btt-macos-installer.dmg"
+INSTALLER_SCRIPT="${REPO_ROOT}/installers/macos/install-btt.command"
+
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "This script must be run on macOS (Darwin)."
+  exit 1
+fi
+
+if ! command -v rsync >/dev/null 2>&1; then
+  echo "Missing required command: rsync"
+  exit 1
+fi
+
+if ! command -v hdiutil >/dev/null 2>&1; then
+  echo "Missing required command: hdiutil"
+  exit 1
+fi
+
+if [[ ! -f "${INSTALLER_SCRIPT}" ]]; then
+  echo "Missing installer script: ${INSTALLER_SCRIPT}"
+  exit 1
+fi
 
 rm -rf "${STAGE_DIR}"
 mkdir -p "${STAGE_DIR}"
