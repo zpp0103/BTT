@@ -407,7 +407,11 @@
       }
     }
 
-    el("apiBase").value = window.location.origin;
+    const assistantPath = "/ai-assistant";
+    const currentPath = window.location.pathname || "";
+    const prefixIndex = currentPath.lastIndexOf(assistantPath);
+    const basePrefix = prefixIndex >= 0 ? currentPath.slice(0, prefixIndex) : "";
+    el("apiBase").value = `${window.location.origin}${basePrefix}`;
     el("loadBootstrap").addEventListener("click", loadBootstrap);
     el("loadRoundtable").addEventListener("click", loadRoundtable);
     el("saveRoundtable").addEventListener("click", saveRoundtable);

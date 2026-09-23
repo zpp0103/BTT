@@ -215,17 +215,21 @@ def _load_roundtable_config(config) -> tuple[str, dict]:
     config_file = _roundtable_config_file(config)
     if not config_file.is_file():
         return "default", _default_roundtable_config()
+
+    def _quarantine_invalid_roundtable_file(path: Path) -> None:
+        invalid_file = path.with_suffix(f"{path.suffix}.invalid")
+        try:
+            path.replace(invalid_file)
+            logger.warning("Moved invalid roundtable config to %s", invalid_file)
+        except Exception:
+            logger.exception("Failed to quarantine invalid roundtable config file %s", path)
+
     try:
         file_content = config_file.read_text(encoding="utf-8")
         user_cfg = rapidjson.loads(file_content)
     except Exception:
         logger.exception("Failed to load user roundtable config from %s", config_file)
-        invalid_file = config_file.with_suffix(f"{config_file.suffix}.invalid")
-        try:
-            config_file.replace(invalid_file)
-            logger.warning("Moved invalid roundtable config to %s", invalid_file)
-        except Exception:
-            logger.exception("Failed to quarantine invalid roundtable config file %s", config_file)
+        _quarantine_invalid_roundtable_file(config_file)
         return "default", _default_roundtable_config()
     try:
         return "user_override", _normalize_roundtable_config(user_cfg)
@@ -234,6 +238,7 @@ def _load_roundtable_config(config) -> tuple[str, dict]:
             "Roundtable config in %s failed schema validation. Falling back to default.",
             config_file,
         )
+        _quarantine_invalid_roundtable_file(config_file)
         return "default", _default_roundtable_config()
 
 

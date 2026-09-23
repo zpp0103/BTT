@@ -3085,8 +3085,8 @@ def test_api_ai_assistant_roundtable_config_fallback_on_invalid_structure(botcli
     payload = rc.json()
     assert payload["source"] == "default"
     assert payload["config"]["version"] == 1
-    assert config_file.exists()
-    assert not (tmp_path / "ai" / "roundtable_config.json.invalid").exists()
+    assert not config_file.exists()
+    assert (tmp_path / "ai" / "roundtable_config.json.invalid").exists()
 
 
 def test_api_ai_assistant_roundtable_history_and_rollback(botclient, tmp_path):
