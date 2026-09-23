@@ -179,6 +179,7 @@ def test_api_ui_fallback(botclient, mocker):
     assert "AI Assistant Bootstrap (Read-Only)" in rc.text
     assert "Status Summary" in rc.text
     assert "Log Summary" in rc.text
+    assert "System Summary" in rc.text
 
     # Forwarded to fallback_html or index.html (depending if it's installed or not)
     rc = client_get(client, "/something")
