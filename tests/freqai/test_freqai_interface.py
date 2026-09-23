@@ -66,10 +66,10 @@ class DummyFeaturePipeline:
         raise KeyError(key)
 
 
-def _make_minimal_classifier_dk() -> MagicMock:
+def _make_minimal_classifier_dk(labels: list[str] | None = None) -> MagicMock:
     dk = MagicMock()
     dk.training_features_list = ["f0", "f1"]
-    dk.label_list = ["&-s_entry"]
+    dk.label_list = labels or ["&-s_entry"]
     dk.data_dictionary = {}
     dk.find_features = MagicMock()
     dk.filter_features = MagicMock(
@@ -156,6 +156,20 @@ def test_base_classifier_predict_rejects_invalid_probability_shape():
     dk = _make_minimal_classifier_dk()
 
     with pytest.raises(OperationalException, match="prediction probabilities"):
+        model.predict(DataFrame({"f0": [1.0, 2.0]}), dk)
+
+
+def test_base_classifier_predict_rejects_multi_column_labels():
+    model = object.__new__(DummyBaseClassifierModel)
+    model.CONV_WIDTH = 1
+    model.model = MagicMock()
+    model.model.classes_ = ["up", "down"]
+    model.model.predict.return_value = [1, 0]
+    model.model.predict_proba.return_value = [0.9, 0.1, 0.2, 0.8]
+
+    dk = _make_minimal_classifier_dk(labels=["&-s_up", "&-s_down"])
+
+    with pytest.raises(OperationalException, match="exactly one classifier label column"):
         model.predict(DataFrame({"f0": [1.0, 2.0]}), dk)
 
 

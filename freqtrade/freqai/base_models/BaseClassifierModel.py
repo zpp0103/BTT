@@ -7,6 +7,7 @@ import numpy.typing as npt
 import pandas as pd
 from pandas import DataFrame
 
+from freqtrade.exceptions import OperationalException
 from freqtrade.freqai.data_kitchen import FreqaiDataKitchen
 from freqtrade.freqai.freqai_interface import IFreqaiModel
 
@@ -115,7 +116,12 @@ class BaseClassifierModel(IFreqaiModel):
             1,
             expected_rows=expected_rows,
         )
-        pred_df = DataFrame(predictions, columns=dk.label_list[: predictions.shape[1]])
+        if len(dk.label_list) != 1:
+            raise OperationalException(
+                "BaseClassifierModel expects exactly one classifier label column. "
+                "Use a multi-target classifier model for multi-column targets."
+            )
+        pred_df = DataFrame(predictions, columns=dk.label_list)
 
         predictions_prob = self.coerce_prediction_output(
             self.model.predict_proba(dk.data_dictionary["prediction_features"]),
