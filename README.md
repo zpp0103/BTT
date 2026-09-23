@@ -164,6 +164,22 @@ Please refer to the [Docker Quickstart documentation](https://www.freqtrade.io/e
 
 For further (native) installation methods, please refer to the [Installation documentation page](https://www.freqtrade.io/en/stable/installation/).
 
+### One-click installers (Windows / macOS)
+
+This repository includes one-click local installer scripts for backtesting and dry-run setup:
+
+- **Windows**: `installers/windows/install-btt.bat` (or `install-btt.ps1`)
+- **macOS**: `installers/macos/install-btt.command`
+
+These scripts will:
+1. Detect a supported Python version (3.11-3.14)
+2. Create `.venv`
+3. Install `requirements-dev.txt`
+4. Install the project in editable mode
+5. Install FreqUI (can be skipped)
+
+After installation, they generate helper launchers (`run-backtest.ps1` / `run-backtest.sh`) for quick backtesting startup.
+
 ## Basic Usage
 
 ### Bot commands
