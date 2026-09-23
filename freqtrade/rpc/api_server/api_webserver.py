@@ -2,6 +2,7 @@ import logging
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
 import rapidjson
 from fastapi import APIRouter, Depends, HTTPException
@@ -196,7 +197,7 @@ def _append_roundtable_history_entry_unlocked(config, cfg: dict, source: str) ->
     entries = _load_roundtable_history_entries_raw(config)
     now = datetime.now(UTC)
     entry = {
-        "version_id": now.strftime("%Y%m%dT%H%M%S%fZ"),
+        "version_id": f"{now.strftime('%Y%m%dT%H%M%S%fZ')}-{uuid4().hex[:8]}",
         "saved_at": now.isoformat().replace("+00:00", "Z"),
         "source": source,
         "config": cfg,

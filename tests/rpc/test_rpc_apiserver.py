@@ -3146,6 +3146,7 @@ def test_api_ai_assistant_roundtable_history_and_rollback(botclient, tmp_path):
     assert_response(history_rc)
     history = history_rc.json()["entries"]
     assert len(history) == 2
+    assert len({entry["version_id"] for entry in history}) == 2
     assert history[0]["config"]["layers"][0]["agents"][0]["prompt"] == "second prompt"
     assert history[1]["config"]["layers"][0]["agents"][0]["prompt"] == "first prompt"
 
@@ -3169,6 +3170,7 @@ def test_api_ai_assistant_roundtable_history_and_rollback(botclient, tmp_path):
     assert_response(history_rc2)
     history2 = history_rc2.json()["entries"]
     assert len(history2) == 3
+    assert len({entry["version_id"] for entry in history2}) == 3
     assert history2[0]["source"] == "rollback"
 
 

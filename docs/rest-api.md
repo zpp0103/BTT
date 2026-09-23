@@ -224,7 +224,7 @@ Recommended approach: start with read-only analysis endpoints, validate behavior
 | `/ai/assistant/bootstrap` | GET | Read-only AI assistant bootstrap payload (AI context + extension points + endpoint metadata + safe workflow checklist). |
 | `/ai/assistant/roundtable-config` | GET | Get editable hierarchical roundtable prompt config (layers + agents). Authenticated read endpoint; returns default or saved user override. |
 | `/ai/assistant/roundtable-config` | POST | Save editable hierarchical roundtable prompt config (layers + agents). Authenticated write endpoint persisted under `user_data_dir/ai/roundtable_config.json`. |
-| `/ai/assistant/roundtable-config/history` | GET | List saved prompt config versions (latest-first file order) including `version_id`, timestamp, source, and snapshot payload used for rollback. |
+| `/ai/assistant/roundtable-config/history` | GET | List saved prompt config versions in latest-first response order (newest to oldest) including `version_id`, timestamp, source, and snapshot payload used for rollback. |
 | `/ai/assistant/roundtable-config/rollback` | POST | Roll back current prompt config to a selected `version_id` from history and persist a rollback snapshot entry. |
 | `/available_pairs` | GET | List available backtest data.
 | `/version` | GET | Show version.

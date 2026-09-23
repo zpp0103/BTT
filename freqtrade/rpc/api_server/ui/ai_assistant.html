@@ -314,7 +314,7 @@
         for (const agent of layer.agents) {
           const agentControlKey = `${layer.layer_id}::${agent.agent_id}`;
           const controlRef = agentControls.get(agentControlKey);
-          agent.prompt = (controlRef?.prompt?.value || "").trim();
+          agent.prompt = controlRef?.prompt?.value || "";
           agent.enabled = !!controlRef?.enabled?.checked;
           agent.editable = true;
         }
