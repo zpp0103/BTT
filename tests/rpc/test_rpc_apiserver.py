@@ -3042,6 +3042,22 @@ def test_api_ai_assistant_roundtable_config_post_persist(botclient, tmp_path):
     assert rc2.json()["config"]["layers"][0]["agents"][0]["prompt"] == "new prompt content"
 
 
+def test_api_ai_assistant_roundtable_config_fallback_on_invalid_json(botclient, tmp_path):
+    ftbot, client = botclient
+    ftbot.config["user_data_dir"] = tmp_path
+    ftbot.config["runmode"] = RunMode.WEBSERVER
+
+    config_file = tmp_path / "ai" / "roundtable_config.json"
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_file.write_text("{invalid json", encoding="utf-8")
+
+    rc = client_get(client, f"{BASE_URI}/ai/assistant/roundtable-config")
+    assert_response(rc)
+    payload = rc.json()
+    assert payload["source"] == "default"
+    assert payload["config"]["version"] == 1
+
+
 def test_api_pairlists_available(botclient, tmp_path):
     ftbot, client = botclient
     ftbot.config["user_data_dir"] = tmp_path

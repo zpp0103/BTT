@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 
 import rapidjson
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from freqtrade.data.history.datahandlers import get_datahandler
 from freqtrade.enums import CandleType, TradingMode
@@ -103,7 +103,11 @@ def _default_roundtable_config() -> dict:
 
 
 def _roundtable_config_file(config) -> Path:
-    return Path(config["user_data_dir"]) / ROUNDTABLE_CONFIG_PATH
+    user_data_root = Path(config["user_data_dir"]).resolve()
+    config_file = (user_data_root / ROUNDTABLE_CONFIG_PATH).resolve()
+    if not config_file.is_relative_to(user_data_root):
+        raise HTTPException(status_code=400, detail="Invalid roundtable config path.")
+    return config_file
 
 
 def _normalize_roundtable_config(raw_config: dict) -> dict:
@@ -282,6 +286,9 @@ def get_ai_assistant_bootstrap(config=Depends(get_config)):
     "/ai/assistant/roundtable-config", response_model=AIRoundtableConfigResponse, tags=["FreqAI"]
 )
 def get_ai_assistant_roundtable_config(config=Depends(get_config)):
+    """
+    Read authenticated roundtable prompt configuration (user-scoped, read endpoint).
+    """
     source, cfg = _load_roundtable_config(config)
     return {"source": source, "config": cfg}
 
@@ -293,6 +300,9 @@ def save_ai_assistant_roundtable_config(
     payload: AIRoundtableConfigPayload,
     config=Depends(get_config),
 ):
+    """
+    Save authenticated roundtable prompt configuration override under user_data_dir.
+    """
     config_file = _roundtable_config_file(config)
     config_file.parent.mkdir(parents=True, exist_ok=True)
     normalized = _normalize_roundtable_config(payload.model_dump()["config"])

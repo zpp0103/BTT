@@ -222,8 +222,8 @@ Recommended approach: start with read-only analysis endpoints, validate behavior
 | `/strategy/<strategy>` | GET | Get specific Strategy content by strategy class name.<br/>*Params:*<br/>- `<strategy>` (`str`)
 | `/ai/context` | GET | Read-only AI integration context snapshot (configured strategy/model, available strategies/models, and recommended read-only endpoints for assistants). |
 | `/ai/assistant/bootstrap` | GET | Read-only AI assistant bootstrap payload (AI context + extension points + endpoint metadata + safe workflow checklist). |
-| `/ai/assistant/roundtable-config` | GET | Get editable hierarchical roundtable prompt config (layers + agents). Returns default or saved user override. |
-| `/ai/assistant/roundtable-config` | POST | Save editable hierarchical roundtable prompt config (layers + agents). |
+| `/ai/assistant/roundtable-config` | GET | Get editable hierarchical roundtable prompt config (layers + agents). Authenticated read endpoint; returns default or saved user override. |
+| `/ai/assistant/roundtable-config` | POST | Save editable hierarchical roundtable prompt config (layers + agents). Authenticated write endpoint persisted under `user_data_dir/ai/roundtable_config.json`. |
 | `/available_pairs` | GET | List available backtest data.
 | `/version` | GET | Show version.
 | `/sysinfo` | GET | Show information about the system load.
