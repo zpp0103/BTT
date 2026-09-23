@@ -179,6 +179,9 @@ def test_api_ui_fallback(botclient, mocker):
     assert "AI Assistant Roundtable Prompt Console" in rc.text
     assert "Roundtable Prompt Layers (Editable)" in rc.text
     assert "Prompt Version History" in rc.text
+    assert "Export Config JSON" in rc.text
+    assert "Import Config JSON" in rc.text
+    assert "Rollback to Selected Version" in rc.text
 
     # Forwarded to fallback_html or index.html (depending if it's installed or not)
     rc = client_get(client, "/something")
