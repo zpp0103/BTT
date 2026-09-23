@@ -529,6 +529,83 @@ class FreqAIModelListResponse(BaseModel):
     freqaimodels: list[str]
 
 
+class AIContextResponse(BaseModel):
+    ai_enabled: bool
+    has_freqai_config: bool
+    configured_strategy: str | None = None
+    configured_freqaimodel: str | None = None
+    strategies: list[str]
+    freqaimodels: list[str]
+    recommended_readonly_endpoints: list[str]
+
+
+class AIAssistantEndpointInfo(BaseModel):
+    path: str
+    purpose: str
+
+
+class AIAssistantExtensionPoint(BaseModel):
+    key: str
+    title: str
+    docs_path: str
+    summary: str
+
+
+class AIAssistantBootstrapResponse(BaseModel):
+    ai_context: AIContextResponse
+    extension_points: list[AIAssistantExtensionPoint]
+    readonly_endpoint_details: list[AIAssistantEndpointInfo]
+    safe_workflow: list[str]
+    roundtable_config_endpoint: str | None = None
+    roundtable_history_endpoint: str | None = None
+    roundtable_rollback_endpoint: str | None = None
+
+
+class AIRoundtableAgent(BaseModel):
+    agent_id: str
+    name: str
+    prompt: str
+    enabled: bool = True
+    editable: bool = True
+
+
+class AIRoundtableLayer(BaseModel):
+    layer_id: str
+    title: str
+    description: str | None = None
+    enabled: bool = True
+    agents: list[AIRoundtableAgent]
+
+
+class AIRoundtableConfig(BaseModel):
+    version: int = 1
+    layers: list[AIRoundtableLayer]
+
+
+class AIRoundtableConfigPayload(BaseModel):
+    config: AIRoundtableConfig
+
+
+class AIRoundtableConfigResponse(BaseModel):
+    source: Literal["default", "user_override"]
+    config: AIRoundtableConfig
+
+
+class AIRoundtableHistoryEntry(BaseModel):
+    version_id: str
+    saved_at: str
+    source: Literal["save", "rollback"]
+    config: AIRoundtableConfig
+
+
+class AIRoundtableHistoryResponse(BaseModel):
+    entries: list[AIRoundtableHistoryEntry]
+
+
+class AIRoundtableRollbackPayload(BaseModel):
+    version_id: str
+
+
 class __StrategyParameter(BaseModel):
     param_type: str
     name: str

@@ -590,6 +590,58 @@ class IFreqaiModel(ABC):
 
         return label_pipeline
 
+    def coerce_prediction_output(
+        self,
+        predictions: Any,
+        expected_columns: int,
+        *,
+        expected_rows: int | None = None,
+        allow_1d_multicolumn: bool = False,
+        output_name: str = "predictions",
+    ) -> NDArray[Any]:
+        """
+        Coerce external model outputs to a predictable 2D numpy shape.
+
+        This helper is primarily intended for custom model providers which may return
+        lists, pandas objects, or flat numpy arrays.
+        """
+        pred_array = np.asarray(predictions)
+
+        if pred_array.ndim == 0:
+            raise OperationalException(
+                f"{output_name} must be array-like with at least 1 dimension."
+            )
+
+        if pred_array.ndim == 1:
+            if expected_columns == 1:
+                pred_array = pred_array.reshape(-1, 1)
+            elif allow_1d_multicolumn and pred_array.size % expected_columns == 0:
+                pred_array = pred_array.reshape(-1, expected_columns)
+            else:
+                raise OperationalException(
+                    f"Cannot reshape {output_name} with shape {pred_array.shape} to "
+                    f"(-1, {expected_columns})."
+                )
+        elif pred_array.ndim == 2:
+            if pred_array.shape[1] != expected_columns:
+                raise OperationalException(
+                    f"{output_name} has unexpected shape {pred_array.shape}. "
+                    f"Expected second dimension to match {expected_columns}."
+                )
+        else:
+            raise OperationalException(
+                f"{output_name} has unexpected dimensions {pred_array.ndim}. "
+                "Only 1D or 2D outputs are supported."
+            )
+
+        if expected_rows is not None and pred_array.shape[0] != expected_rows:
+            raise OperationalException(
+                f"{output_name} has unexpected number of rows {pred_array.shape[0]}. "
+                f"Expected {expected_rows}."
+            )
+
+        return pred_array
+
     def model_exists(self, dk: FreqaiDataKitchen) -> bool:
         """
         Given a pair and path, check if a model already exists

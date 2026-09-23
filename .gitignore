@@ -15,6 +15,9 @@ user_data/notebooks/*
 freqtrade-plot.html
 freqtrade-profit-plot.html
 freqtrade/rpc/api_server/ui/*
+!freqtrade/rpc/api_server/ui/fallback_file.html
+!freqtrade/rpc/api_server/ui/favicon.ico
+!freqtrade/rpc/api_server/ui/ai_assistant.html
 build_helpers/ta-lib/*
 
 # Macos related

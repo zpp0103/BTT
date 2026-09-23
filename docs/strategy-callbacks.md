@@ -25,6 +25,17 @@ Currently available callbacks:
 !!! Tip "Callback calling sequence"
     You can find the callback calling sequence in [bot-basics](bot-basics.md#bot-execution-logic)
 
+## Using callbacks for AI-assisted workflows
+
+Callbacks are a practical place to add AI-assisted logic (for example `bot_loop_start()`, `confirm_trade_entry()`, `confirm_trade_exit()`, `custom_stake_amount()`, or `custom_stoploss()`), but they run frequently and are part of live execution flow.
+
+When integrating external AI services in callbacks:
+
+* Keep requests bounded (timeouts/retries) and cache results when possible.
+* Always define a deterministic fallback path if the remote service is slow or unavailable.
+* Avoid heavy synchronous work inside per-trade callbacks to prevent execution delays.
+* Treat AI outputs as guardrails/filters unless you have validated full decision delegation in backtesting and dry-run.
+
 --8<-- "includes/strategy-imports.md"
 
 --8<-- "includes/strategy-exit-comparisons.md"

@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Freqtrade AI Assistant</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #202124;
+      --panel: #2b2f34;
+      --border: #3c4043;
+      --text: #e8eaed;
+      --muted: #9aa0a6;
+      --ok: #81c995;
+      --warn: #fdd663;
+      --accent: #8ab4f8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      line-height: 1.4;
+    }
+    .container { max-width: 1120px; margin: 0 auto; padding: 1rem; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .row { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+    .field { min-width: 220px; flex: 1; }
+    label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 0.25rem; }
+    input, textarea, select {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.5rem 0.6rem;
+      background: #1f2124;
+      color: var(--text);
+      font: inherit;
+    }
+    textarea { min-height: 90px; resize: vertical; }
+    button {
+      border: 1px solid #5f6368;
+      border-radius: 6px;
+      background: #3c4043;
+      color: var(--text);
+      padding: 0.5rem 0.8rem;
+      cursor: pointer;
+      margin-right: 0.5rem;
+      margin-top: 0.6rem;
+    }
+    h3 { margin-bottom: 0.3rem; }
+    .muted { color: var(--muted); }
+    .ok { color: var(--ok); }
+    .warn { color: var(--warn); }
+    .agent, .layer {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.75rem;
+      margin: 0.6rem 0;
+      background: #262a2e;
+    }
+    code {
+      background: #1f2124;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.08rem 0.3rem;
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      margin: 0.45rem 0;
+    }
+    .toggle-row input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--accent);
+    }
+    .history-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      margin-top: 0.5rem;
+    }
+    .compact {
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="panel">
+      <h1>AI Assistant Roundtable Prompt Console</h1>
+      <p class="muted">Read-only assistant bootstrap data + editable layered roundtable prompts.</p>
+      <div class="row">
+        <div class="field">
+          <label for="apiBase">API Base URL</label>
+          <input id="apiBase" value="">
+        </div>
+        <div class="field">
+          <label for="username">Username (optional)</label>
+          <input id="username" placeholder="Freqtrader">
+        </div>
+        <div class="field">
+          <label for="password">Password (optional)</label>
+          <input id="password" type="password" placeholder="******">
+        </div>
+      </div>
+      <button id="loadBootstrap" type="button">Load Bootstrap</button>
+      <button id="loadRoundtable" type="button">Load Roundtable Config</button>
+      <button id="saveRoundtable" type="button">Save Roundtable Config</button>
+      <button id="exportRoundtable" type="button">Export Config JSON</button>
+      <label id="importFileLabel" class="compact" for="importFile" style="display:block; margin-top:0.75rem;">Import Config JSON</label>
+      <input id="importFile" type="file" accept="application/json,.json" aria-labelledby="importFileLabel">
+      <button id="importRoundtable" type="button">Import to Editor (no save)</button>
+      <div
+        id="statusMsg"
+        class="muted"
+        style="margin-top: 0.75rem;"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      ></div>
+    </div>
+
+    <div class="panel">
+      <h2>Roundtable Prompt Layers (Editable)</h2>
+      <div id="roundtableLayers"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Prompt Version History</h2>
+      <div class="history-actions">
+        <button id="loadHistory" type="button">Load History</button>
+        <label class="compact" for="historySelect">History version</label>
+        <select id="historySelect"></select>
+        <button id="rollbackHistory" type="button">Rollback to Selected Version</button>
+      </div>
+      <ul id="historySummary"></ul>
+    </div>
+  </div>
+
+  <script>
+    const el = (id) => document.getElementById(id);
+    let currentRoundtable = null;
+    let historyEntries = [];
+    let controlIdCounter = 0;
+    const EXPORT_URL_REVOKE_DELAY_MS = 5000;
+    const layerEnabledControls = new Map();
+    const agentControls = new Map();
+    const apiRoutes = {
+      bootstrap: "/api/v1/ai/assistant/bootstrap",
+      roundtableConfig: "/api/v1/ai/assistant/roundtable-config",
+      roundtableHistory: "/api/v1/ai/assistant/roundtable-config/history",
+      roundtableRollback: "/api/v1/ai/assistant/roundtable-config/rollback",
+    };
+
+    function nextControlId(prefix) {
+      controlIdCounter += 1;
+      return `${prefix}_${controlIdCounter}`;
+    }
+
+    function withApiPrefix(path) {
+      if (!path) {
+        return path;
+      }
+      if (path.startsWith("/api/")) {
+        return path;
+      }
+      if (path.startsWith("/")) {
+        return `/api/v1${path}`;
+      }
+      return path;
+    }
+
+    function authHeaders(extraHeaders = {}) {
+      const username = el("username").value.trim();
+      const password = el("password").value;
+      const base = {};
+      if (username || password) {
+        base.Authorization = "Basic " + btoa(`${username}:${password}`);
+      }
+      return { ...base, ...extraHeaders };
+    }
+
+    function apiBase() {
+      return el("apiBase").value.trim() || window.location.origin;
+    }
+
+    async function fetchJson(path, options = {}) {
+      const headers = authHeaders(options.headers || {});
+      const resp = await fetch(`${apiBase()}${path}`, { ...options, headers });
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}`);
+      }
+      return await resp.json();
+    }
+
+    function setStatus(message, cls = "muted") {
+      const status = el("statusMsg");
+      status.className = cls;
+      status.textContent = message;
+    }
+
+    function toList(target, entries) {
+      target.replaceChildren();
+      for (const entry of entries) {
+        const li = document.createElement("li");
+        li.textContent = entry;
+        target.appendChild(li);
+      }
+    }
+
+    function assertImportedRoundtableShape(config) {
+      if (!config || typeof config !== "object" || !Array.isArray(config.layers)) {
+        throw new Error("Invalid format: missing layers array.");
+      }
+      for (const [layerIndex, layer] of config.layers.entries()) {
+        if (!layer || typeof layer !== "object") {
+          throw new Error(`Invalid layer at index ${layerIndex}.`);
+        }
+        if (typeof layer.layer_id !== "string" || !layer.layer_id) {
+          throw new Error(`Layer ${layerIndex} is missing layer_id.`);
+        }
+        if (typeof layer.title !== "string") {
+          throw new Error(`Layer ${layer.layer_id} is missing title.`);
+        }
+        if (layer.description !== undefined && layer.description !== null && typeof layer.description !== "string") {
+          throw new Error(`Layer ${layer.layer_id} has invalid description.`);
+        }
+        if (!Array.isArray(layer.agents)) {
+          throw new Error(`Layer ${layer.layer_id} is missing agents array.`);
+        }
+        for (const [agentIndex, agent] of layer.agents.entries()) {
+          if (!agent || typeof agent !== "object") {
+            throw new Error(`Invalid agent at index ${agentIndex} in layer ${layer.layer_id}.`);
+          }
+          if (typeof agent.agent_id !== "string" || !agent.agent_id) {
+            throw new Error(`Layer ${layer.layer_id} agent ${agentIndex} is missing agent_id.`);
+          }
+          if (typeof agent.name !== "string") {
+            throw new Error(`Agent ${agent.agent_id} in layer ${layer.layer_id} is missing name.`);
+          }
+          if (typeof agent.prompt !== "string") {
+            throw new Error(`Agent ${agent.agent_id} in layer ${layer.layer_id} is missing prompt.`);
+          }
+        }
+      }
+    }
+
+    function renderRoundtable(config, sourceLabel = "") {
+      currentRoundtable = structuredClone(config);
+      const root = el("roundtableLayers");
+      root.replaceChildren();
+      layerEnabledControls.clear();
+      agentControls.clear();
+
+      for (const layer of currentRoundtable.layers) {
+        const section = document.createElement("section");
+        section.className = "layer";
+        const title = document.createElement("h3");
+        title.textContent = layer.title || "";
+        section.appendChild(title);
+
+        const desc = document.createElement("p");
+        desc.className = "muted";
+        const descText = document.createTextNode(`${layer.description || ""} `);
+        const code = document.createElement("code");
+        code.textContent = layer.layer_id || "";
+        desc.appendChild(descText);
+        desc.appendChild(code);
+        section.appendChild(desc);
+
+        const layerToggleId = nextControlId("layer_enabled");
+        const layerToggle = document.createElement("div");
+        layerToggle.className = "toggle-row";
+        const layerCheck = document.createElement("input");
+        layerCheck.id = layerToggleId;
+        layerCheck.type = "checkbox";
+        layerCheck.checked = !!layer.enabled;
+        layerEnabledControls.set(layer.layer_id, layerCheck);
+        const layerLabel = document.createElement("label");
+        layerLabel.setAttribute("for", layerToggleId);
+        layerLabel.style.margin = "0";
+        layerLabel.textContent = "Layer enabled";
+        layerToggle.appendChild(layerCheck);
+        layerToggle.appendChild(layerLabel);
+        section.appendChild(layerToggle);
+
+        for (const agent of layer.agents) {
+          const card = document.createElement("div");
+          card.className = "agent";
+          const promptId = nextControlId("prompt");
+          const enabledId = nextControlId("agent_enabled");
+          const agentControlKey = `${layer.layer_id}::${agent.agent_id}`;
+          const strong = document.createElement("strong");
+          strong.textContent = agent.name || "";
+          card.appendChild(strong);
+          const span = document.createElement("span");
+          span.className = "muted";
+          span.appendChild(document.createTextNode(" ("));
+          const agentCode = document.createElement("code");
+          agentCode.textContent = agent.agent_id || "";
+          span.appendChild(agentCode);
+          span.appendChild(document.createTextNode(")"));
+          card.appendChild(span);
+
+          const toggleRow = document.createElement("div");
+          toggleRow.className = "toggle-row";
+          const agentCheck = document.createElement("input");
+          agentCheck.id = enabledId;
+          agentCheck.type = "checkbox";
+          agentCheck.checked = !!agent.enabled;
+          const agentLabel = document.createElement("label");
+          agentLabel.setAttribute("for", enabledId);
+          agentLabel.style.margin = "0";
+          agentLabel.textContent = "Agent enabled";
+          toggleRow.appendChild(agentCheck);
+          toggleRow.appendChild(agentLabel);
+          card.appendChild(toggleRow);
+
+          const promptLabel = document.createElement("label");
+          promptLabel.setAttribute("for", promptId);
+          promptLabel.className = "muted";
+          promptLabel.textContent = "Prompt";
+          card.appendChild(promptLabel);
+
+          const promptText = document.createElement("textarea");
+          promptText.id = promptId;
+          promptText.value = agent.prompt || "";
+          agentControls.set(agentControlKey, {
+            prompt: promptText,
+            enabled: agentCheck,
+          });
+          card.appendChild(promptText);
+          section.appendChild(card);
+        }
+
+        root.appendChild(section);
+      }
+
+      if (sourceLabel) {
+        setStatus(`Roundtable config loaded (${sourceLabel}).`, "ok");
+      }
+    }
+
+    function collectRoundtableFromUI() {
+      const cfg = structuredClone(currentRoundtable);
+      for (const layer of cfg.layers) {
+        layer.enabled = !!layerEnabledControls.get(layer.layer_id)?.checked;
+        for (const agent of layer.agents) {
+          const agentControlKey = `${layer.layer_id}::${agent.agent_id}`;
+          const controlRef = agentControls.get(agentControlKey);
+          agent.prompt = controlRef?.prompt?.value || "";
+          agent.enabled = !!controlRef?.enabled?.checked;
+          agent.editable = true;
+        }
+      }
+      return cfg;
+    }
+
+    async function loadBootstrap() {
+      setStatus("Loading bootstrap...");
+      try {
+        const data = await fetchJson(apiRoutes.bootstrap);
+        apiRoutes.roundtableConfig = withApiPrefix(data.roundtable_config_endpoint);
+        apiRoutes.roundtableHistory = withApiPrefix(data.roundtable_history_endpoint);
+        apiRoutes.roundtableRollback = withApiPrefix(data.roundtable_rollback_endpoint);
+        setStatus(
+          `Bootstrap loaded. Config endpoint: ${apiRoutes.roundtableConfig}. ` +
+          `History endpoint: ${apiRoutes.roundtableHistory}.`,
+          "ok"
+        );
+      } catch (err) {
+        setStatus(`Bootstrap load failed: ${err.message}`, "warn");
+      }
+    }
+
+    async function loadRoundtable() {
+      setStatus("Loading roundtable config...");
+      try {
+        const data = await fetchJson(apiRoutes.roundtableConfig);
+        renderRoundtable(data.config, data.source);
+      } catch (err) {
+        setStatus(`Roundtable load failed: ${err.message}`, "warn");
+      }
+    }
+
+    async function saveRoundtable() {
+      if (!currentRoundtable) {
+        setStatus("Load or import roundtable config first.", "warn");
+        return;
+      }
+      setStatus("Saving roundtable config...");
+      const cfg = collectRoundtableFromUI();
+      try {
+        const data = await fetchJson(apiRoutes.roundtableConfig, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ config: cfg }),
+        });
+        renderRoundtable(data.config, data.source);
+      } catch (err) {
+        setStatus(`Roundtable save failed: ${err.message}`, "warn");
+      }
+    }
+
+    function exportRoundtable() {
+      if (!currentRoundtable) {
+        setStatus("Load or import roundtable config before export.", "warn");
+        return;
+      }
+      const cfg = collectRoundtableFromUI();
+      const blob = new Blob([JSON.stringify(cfg, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "roundtable_config.export.json";
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, EXPORT_URL_REVOKE_DELAY_MS);
+      setStatus("Roundtable config exported.", "ok");
+    }
+
+    async function importRoundtable() {
+      const fileInput = el("importFile");
+      if (!fileInput.files || fileInput.files.length === 0) {
+        setStatus("Choose a JSON file first.", "warn");
+        return;
+      }
+      const file = fileInput.files[0];
+      setStatus("Importing config into editor...");
+      try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      assertImportedRoundtableShape(parsed);
+      renderRoundtable(parsed, "imported_file");
+      } catch (err) {
+      setStatus(`Import failed: ${err.message}`, "warn");
+      }
+    }
+
+    async function loadHistory() {
+      setStatus("Loading prompt history...");
+      try {
+        const data = await fetchJson(apiRoutes.roundtableHistory);
+        historyEntries = data.entries || [];
+        const select = el("historySelect");
+        select.replaceChildren();
+        for (const entry of historyEntries) {
+          const opt = document.createElement("option");
+          opt.value = entry.version_id;
+          opt.textContent = `${entry.saved_at} [${entry.source}] ${entry.version_id}`;
+          select.appendChild(opt);
+        }
+        const summary = historyEntries.map((e) =>
+          `${e.version_id} - ${e.saved_at} (${e.source})`
+        );
+        toList(el("historySummary"), summary.length ? summary : ["No history entries yet."]);
+        setStatus("Prompt history loaded.", "ok");
+      } catch (err) {
+        setStatus(`History load failed: ${err.message}`, "warn");
+      }
+    }
+
+    async function rollbackHistory() {
+      const versionId = el("historySelect").value;
+      if (!versionId) {
+        setStatus("Select a history version first.", "warn");
+        return;
+      }
+      setStatus(`Rolling back to ${versionId}...`);
+      try {
+        const data = await fetchJson(apiRoutes.roundtableRollback, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ version_id: versionId }),
+        });
+        renderRoundtable(data.config, "rollback");
+        await loadHistory();
+      } catch (err) {
+        setStatus(`Rollback failed: ${err.message}`, "warn");
+      }
+    }
+
+    const assistantPath = "/ai-assistant";
+    const assistantPathWithSlash = "/ai-assistant/";
+    const currentPath = window.location.pathname || "";
+    let basePrefix = "";
+    if (currentPath.endsWith(assistantPath)) {
+      basePrefix = currentPath.slice(0, -assistantPath.length);
+    } else if (currentPath.endsWith(assistantPathWithSlash)) {
+      basePrefix = currentPath.slice(0, -assistantPathWithSlash.length);
+    }
+    el("apiBase").value = `${window.location.origin}${basePrefix}`;
+    el("loadBootstrap").addEventListener("click", loadBootstrap);
+    el("loadRoundtable").addEventListener("click", loadRoundtable);
+    el("saveRoundtable").addEventListener("click", saveRoundtable);
+    el("exportRoundtable").addEventListener("click", exportRoundtable);
+    el("importRoundtable").addEventListener("click", importRoundtable);
+    el("loadHistory").addEventListener("click", loadHistory);
+    el("rollbackHistory").addEventListener("click", rollbackHistory);
+  </script>
+</body>
+</html>

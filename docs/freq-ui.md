@@ -94,6 +94,7 @@ when freqtrade is started in [webserver mode](utils.md#webserver-mode) (freqtrad
 * Downloading data
 * Testing pairlists
 * [Backtesting strategies](#backtesting)
+* Lightweight assistant page at `/ai-assistant` (read-only runtime context from `/api/v1/ai/assistant/bootstrap`, editable roundtable prompt layers with per-layer/per-agent enable toggles, JSON import/export, and prompt history rollback via `/api/v1/ai/assistant/roundtable-config*` endpoints)
 * ... to be expanded
 
 ### Backtesting

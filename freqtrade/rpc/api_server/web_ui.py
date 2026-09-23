@@ -30,6 +30,11 @@ async def ui_version():
     }
 
 
+@router_ui.get("/ai-assistant")
+async def ai_assistant():
+    return FileResponse(str(Path(__file__).parent / "ui/ai_assistant.html"))
+
+
 @router_ui.get("/{rest_of_path:path}")
 async def index_html(rest_of_path: str):
     """

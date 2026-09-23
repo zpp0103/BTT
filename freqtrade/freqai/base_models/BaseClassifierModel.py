@@ -7,6 +7,7 @@ import numpy.typing as npt
 import pandas as pd
 from pandas import DataFrame
 
+from freqtrade.exceptions import OperationalException
 from freqtrade.freqai.data_kitchen import FreqaiDataKitchen
 from freqtrade.freqai.freqai_interface import IFreqaiModel
 
@@ -107,15 +108,28 @@ class BaseClassifierModel(IFreqaiModel):
             dk.data_dictionary["prediction_features"], outlier_check=True
         )
 
-        predictions = self.model.predict(dk.data_dictionary["prediction_features"])
-        if self.CONV_WIDTH == 1:
-            predictions = np.reshape(predictions, (-1, len(dk.label_list)))
-
+        expected_rows = (
+            len(dk.data_dictionary["prediction_features"]) if self.CONV_WIDTH == 1 else None
+        )
+        predictions = self.coerce_prediction_output(
+            self.model.predict(dk.data_dictionary["prediction_features"]),
+            1,
+            expected_rows=expected_rows,
+        )
+        if len(dk.label_list) != 1:
+            raise OperationalException(
+                "BaseClassifierModel expects exactly one classifier label column. "
+                "Use a multi-target classifier model for multi-column targets."
+            )
         pred_df = DataFrame(predictions, columns=dk.label_list)
 
-        predictions_prob = self.model.predict_proba(dk.data_dictionary["prediction_features"])
-        if self.CONV_WIDTH == 1:
-            predictions_prob = np.reshape(predictions_prob, (-1, len(self.model.classes_)))
+        predictions_prob = self.coerce_prediction_output(
+            self.model.predict_proba(dk.data_dictionary["prediction_features"]),
+            len(self.model.classes_),
+            expected_rows=expected_rows,
+            allow_1d_multicolumn=self.CONV_WIDTH == 1,
+            output_name="prediction probabilities",
+        )
         pred_df_prob = DataFrame(predictions_prob, columns=self.model.classes_)
 
         pred_df = pd.concat([pred_df, pred_df_prob], axis=1)

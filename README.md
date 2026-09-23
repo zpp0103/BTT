@@ -10,6 +10,81 @@ Freqtrade is a free and open source crypto trading bot written in Python. It is 
 
 ![freqtrade](https://raw.githubusercontent.com/freqtrade/freqtrade/develop/docs/assets/freqtrade-screenshot.png)
 
+## 项目介绍书（Project Profile）
+
+本项目（BTT）基于 Freqtrade，定位为“可研究、可回测、可实盘演进”的开源量化交易系统。  
+项目面向策略研究者与工程开发者，提供从数据、策略、评估到执行与运维的完整闭环能力，并重点增强了 AI/FreqAI 扩展能力，便于后续接入外部模型与智能体协作流程。
+
+### 核心优势
+
+1. **开源透明，工程可控**
+   - Python 技术栈，代码结构清晰，便于二次开发与审计。
+   - 配置、策略、接口均可追踪，适合团队协作和持续迭代。
+
+2. **交易全流程能力完整**
+   - 内置数据管理、回测、超参优化、可视化、实盘/模拟交易能力。
+   - 支持多交易所与多运行模式，便于从研究快速过渡到验证。
+
+3. **AI/FreqAI 扩展友好**
+   - 已提供 FreqAI 模型接口、策略回调、REST 扩展点与助手引导接口。
+   - 支持分层 Prompt 圆桌配置（含启用开关、导入导出、历史回滚），便于安全迭代 AI 工作流。
+
+4. **风险控制与安全优先**
+   - 强调先回测、再模拟、后实盘的渐进流程，降低策略上线风险。
+   - 支持配置化风控与状态观测，便于发现并定位异常行为。
+
+5. **运维与开发体验完善**
+   - 支持 WebUI 与 Telegram 管理，配合 API 可实现自动化运维。
+   - 测试体系与文档体系完整，便于快速上手和长期维护。
+
+### 适用场景
+
+- 个人量化策略研究与自动化交易实践  
+- 团队化策略研发与版本化管理  
+- AI/LLM 辅助策略分析与执行前风险评估
+
+### 项目介绍书（对外商务版）
+
+BTT 是一个面向数字资产量化交易的开源智能交易平台，基于成熟的 Freqtrade 生态构建。  
+它不仅支持策略开发、回测验证、自动执行和可视化运维，还具备面向 AI 时代的扩展能力，可用于构建“研究-验证-执行-复盘”一体化流程。
+
+**我们能带来的价值：**
+
+- **更快的策略落地速度**：从策略想法到回测验证再到运行部署，流程完整且工具齐全。  
+- **更稳的上线路径**：支持先离线验证、再模拟运行、后实盘迭代，降低试错成本。  
+- **更强的智能化潜力**：已预留 FreqAI 与智能体协作扩展点，便于后续接入外部模型与 AI 工作流。  
+- **更低的长期维护成本**：开源透明、文档完善、接口标准化，支持团队持续演进。
+
+**差异化优势：**
+
+- 不只是“单策略脚本”，而是完整交易工程体系。  
+- 不只是“自动下单”，而是强调风险控制与可观测性的可运营平台。  
+- 不只是“当前可用”，而是为 AI/LLM 深度融合预留了可扩展基础能力。
+
+### 项目介绍书（技术评审版）
+
+BTT 采用“配置驱动 + 策略插件 + API 管理 + AI 扩展”架构，目标是在不破坏核心交易行为的前提下，持续提升策略研发效率与系统可维护性。
+
+**技术结构特点：**
+
+- **模块化边界清晰**：交易执行、策略逻辑、数据处理、API/WebUI、AI/FreqAI 能力相对解耦。  
+- **策略生命周期完整**：支持数据准备、回测、优化、评估、运行监控与结果复盘。  
+- **扩展机制稳定**：支持策略回调、模型解析器、REST 接口扩展与自定义流水线。  
+- **工程化保障完善**：具备测试、文档与配置体系，降低迭代回归风险。
+
+**AI 相关技术优势：**
+
+- 提供标准化 FreqAI 模型接入接口，便于外部模型或混合推理逻辑落地。  
+- 提供 AI Assistant 引导型 API 与可编辑 Roundtable Prompt 配置能力（含导入导出、启停开关、历史回滚）。  
+- 通过渐进式验证路径（回测/模拟/实盘）保障 AI 增强能力的可控上线。
+
+**评审关注点（本项目表现）：**
+
+- **可扩展性**：支持新策略、新模型、新工作流按模块增量接入。  
+- **可观测性**：可通过 WebUI / API / 日志进行状态追踪与问题定位。  
+- **可维护性**：文档与测试覆盖关键能力，便于多人协作和长期维护。  
+- **风险可控性**：强调非破坏性改造与安全回退机制，避免对核心交易行为造成突变。
+
 ## Disclaimer
 
 This software is for educational purposes only. Do not risk money which
@@ -88,6 +163,59 @@ Please find the complete documentation on the [freqtrade website](https://www.fr
 Please refer to the [Docker Quickstart documentation](https://www.freqtrade.io/en/stable/docker_quickstart/) on how to get started quickly.
 
 For further (native) installation methods, please refer to the [Installation documentation page](https://www.freqtrade.io/en/stable/installation/).
+
+### One-click installers (Windows / macOS)
+
+This repository includes one-click local installer scripts for backtesting and dry-run setup:
+
+- **Windows**: `installers/windows/install-btt.bat` (or `install-btt.ps1`)
+- **macOS**: `installers/macos/install-btt.command`
+
+These scripts will:
+1. Detect a supported Python version (3.11-3.14)
+2. Create `.venv`
+3. Install `requirements-dev.txt`
+4. Install the project in editable mode
+5. Install FreqUI (can be skipped)
+6. Create a desktop-first local config at `user_data/config.local.desktop.json` (Telegram disabled by default)
+
+After installation, they generate helper launchers (`run-backtest.ps1` / `run-backtest.sh`) for quick backtesting startup.
+
+#### Desktop-first run (no Telegram)
+
+Use the generated local config (desktop-focused, no mobile/Telegram dependency):
+
+```bash
+python -m freqtrade backtesting --config user_data/config.local.desktop.json --strategy SampleStrategy
+```
+
+#### Build install packages in CI
+
+The workflow `.github/workflows/desktop-installers.yml` builds:
+- **Windows EXE installer** artifact: `btt-windows-installer.exe`
+- **macOS DMG installer** artifact: `btt-macos-installer.dmg`
+
+Run this workflow from GitHub Actions (`workflow_dispatch`) and download artifacts from the run page.
+
+#### Build macOS DMG locally (DRAFT branch check)
+
+Use the following verified commands to build the local macOS installer image:
+
+```bash
+cd /home/runner/work/BTT/BTT
+git fetch origin copilot/enhance-intelligence-layer-ai-improvements
+git checkout origin/copilot/enhance-intelligence-layer-ai-improvements
+chmod +x /home/runner/work/BTT/BTT/installers/macos/install-btt.command
+bash /home/runner/work/BTT/BTT/installers/macos/build-dmg.sh
+```
+
+`build-dmg.sh` must run on macOS and requires `rsync` + `hdiutil`.
+
+Output:
+
+```text
+/home/runner/work/BTT/BTT/dist/btt-macos-installer.dmg
+```
 
 ## Basic Usage
 

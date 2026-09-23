@@ -279,6 +279,13 @@ class MyFreqaiModel(BaseRegressionModel):
 
 Here, you are defining the exact pipeline that will be used for your feature set during training and prediction. You can use *most* SKLearn transformation steps by wrapping them in the `SKLearnWrapper` class as shown above. In addition, you can use any of the transformations available in the [`DataSieve` library](https://github.com/emergentmethods/datasieve). 
 
+When integrating external AI/LLM-derived features into custom pipelines:
+
+* Keep feature names and column presence stable between train and predict paths.
+* Prefer deterministic preprocessing (same scaling/transforms for every run).
+* If external signals are unavailable, provide explicit fallback values to avoid schema drift.
+* Validate output dimensions in your model class before returning predictions.
+
 You can easily add your own transformation by creating a class that inherits from the datasieve `BaseTransform` and implementing your `fit()`, `transform()` and `inverse_transform()` methods:
 
 ```python

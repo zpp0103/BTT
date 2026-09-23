@@ -1,0 +1,47 @@
+name: Build Desktop Installers
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-installer:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Inno Setup
+        shell: powershell
+        run: choco install innosetup -y --no-progress
+
+      - name: Build EXE installer
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installers\windows\BTTInstaller.iss
+
+      - name: Upload Windows EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: btt-windows-exe-installer
+          path: dist/btt-windows-installer.exe
+
+  build-macos-installer:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build DMG installer
+        run: |
+          chmod +x installers/macos/build-dmg.sh
+          installers/macos/build-dmg.sh
+
+      - name: Upload macOS DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: btt-macos-dmg-installer
+          path: dist/btt-macos-installer.dmg

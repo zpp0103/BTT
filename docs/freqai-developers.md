@@ -16,6 +16,22 @@ As shown, there are three distinct objects comprising FreqAI:
 
 There are a variety of built-in [prediction models](freqai-configuration.md#using-different-prediction-models) which inherit directly from `IFreqaiModel`. Each of these models have full access to all methods in `IFreqaiModel` and can therefore override any of those functions at will. However, advanced users will likely stick to overriding `fit()`, `train()`, `predict()`, and `data_cleaning_train/predict()`.
 
+## AI/LLM extension points at a glance
+
+If you are integrating external model providers (LLMs, hosted inference APIs, custom gateways), the highest-value integration points are:
+
+* `IFreqaiModel.fit()` / `train()` / `predict()` for model training and inference control.
+* `IFreqaiModel.define_data_pipeline()` and `define_label_pipeline()` for deterministic preprocessing.
+* `IFreqaiModel.coerce_prediction_output()` for validating and reshaping external outputs before they are converted to prediction dataframes.
+* `FreqaiModelResolver` plus `--freqaimodel` / `--freqaimodel-path` for model discovery and loading.
+* REST endpoint `/freqaimodels` and CLI command `list-freqaimodels` for runtime model introspection.
+
+Recommended pattern for external AI integrations:
+
+1. Keep your strategy/trading decisions deterministic, and treat external inference as additive context.
+2. Normalize and validate external outputs before returning predictions.
+3. Ensure failures degrade safely (timeouts/fallback values) so trading behavior remains predictable.
+
 ## Data handling
 
 FreqAI aims to organize model files, prediction data, and meta data in a way that simplifies post-processing and enhances crash resilience by automatic data reloading. The data is saved in a file structure,`user_data_dir/models/`, which contains all the data associated with the trainings and backtests. The `FreqaiDataKitchen()` relies heavily on the file structure for proper training and inferencing and should therefore not be manually modified.
