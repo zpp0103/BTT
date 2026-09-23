@@ -3183,6 +3183,74 @@ def test_api_ai_assistant_roundtable_rollback_not_found(botclient, tmp_path):
     assert rc.json()["detail"] == "Roundtable history version not found."
 
 
+def test_api_ai_assistant_roundtable_history_skips_entries_without_metadata(botclient, tmp_path):
+    ftbot, client = botclient
+    ftbot.config["user_data_dir"] = tmp_path
+    ftbot.config["runmode"] = RunMode.WEBSERVER
+
+    history_file = tmp_path / "ai" / "roundtable_history.json"
+    history_file.parent.mkdir(parents=True, exist_ok=True)
+    history_file.write_text(
+        rapidjson.dumps(
+            {
+                "entries": [
+                    {
+                        "saved_at": "2026-01-01T00:00:00Z",
+                        "source": "save",
+                        "config": {
+                            "version": 1,
+                            "layers": [
+                                {
+                                    "layer_id": "l1",
+                                    "title": "Layer One",
+                                    "agents": [{"agent_id": "a1", "name": "Analyst", "prompt": "x"}],
+                                }
+                            ],
+                        },
+                    },
+                    {
+                        "version_id": "v2",
+                        "source": "save",
+                        "config": {
+                            "version": 1,
+                            "layers": [
+                                {
+                                    "layer_id": "l1",
+                                    "title": "Layer One",
+                                    "agents": [{"agent_id": "a1", "name": "Analyst", "prompt": "x"}],
+                                }
+                            ],
+                        },
+                    },
+                    {
+                        "version_id": "v3",
+                        "saved_at": "2026-01-01T00:00:01Z",
+                        "source": "save",
+                        "config": {
+                            "version": 1,
+                            "layers": [
+                                {
+                                    "layer_id": "l1",
+                                    "title": "Layer One",
+                                    "agents": [{"agent_id": "a1", "name": "Analyst", "prompt": "ok"}],
+                                }
+                            ],
+                        },
+                    },
+                ]
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    rc = client_get(client, f"{BASE_URI}/ai/assistant/roundtable-config/history")
+    assert_response(rc)
+    entries = rc.json()["entries"]
+    assert len(entries) == 1
+    assert entries[0]["version_id"] == "v3"
+
+
 def test_api_pairlists_available(botclient, tmp_path):
     ftbot, client = botclient
     ftbot.config["user_data_dir"] = tmp_path

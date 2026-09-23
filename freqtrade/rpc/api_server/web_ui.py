@@ -32,6 +32,9 @@ async def ui_version():
 
 @router_ui.get("/ai-assistant")
 async def ai_assistant():
+    uibase = (Path(__file__).parent / "ui/installed/").resolve()
+    if (uibase / "index.html").is_file():
+        return await index_html("ai-assistant")
     return FileResponse(str(Path(__file__).parent / "ui/ai_assistant.html"))
 
 

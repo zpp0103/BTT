@@ -1,4 +1,5 @@
 import logging
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 ROUNDTABLE_CONFIG_PATH = Path("ai") / "roundtable_config.json"
 ROUNDTABLE_HISTORY_PATH = Path("ai") / "roundtable_history.json"
 ROUNDTABLE_HISTORY_LIMIT = 30
+ROUNDTABLE_HISTORY_LOCK = threading.Lock()
 
 # Private API, protected by authentication and webserver_mode dependency
 router = APIRouter()
@@ -146,14 +148,18 @@ def _load_roundtable_history(config) -> list[dict]:
     valid_entries = []
     for entry in entries:
         try:
+            version_id = entry.get("version_id")
+            saved_at = entry.get("saved_at")
+            if not version_id or not saved_at:
+                continue
             cfg = _normalize_roundtable_config(entry.get("config", {}))
             source = entry.get("source", "save")
             if source not in ("save", "rollback"):
                 source = "save"
             valid_entries.append(
                 {
-                    "version_id": str(entry.get("version_id")),
-                    "saved_at": str(entry.get("saved_at")),
+                    "version_id": str(version_id),
+                    "saved_at": str(saved_at),
                     "source": source,
                     "config": cfg,
                 }
@@ -174,17 +180,18 @@ def _save_roundtable_history(config, entries: list[dict]) -> None:
 
 
 def _append_roundtable_history_entry(config, cfg: dict, source: str) -> None:
-    entries = _load_roundtable_history(config)
-    now = datetime.now(UTC)
-    entry = {
-        "version_id": now.strftime("%Y%m%dT%H%M%S%fZ"),
-        "saved_at": now.isoformat().replace("+00:00", "Z"),
-        "source": source,
-        "config": cfg,
-    }
-    entries.append(entry)
-    entries = entries[-ROUNDTABLE_HISTORY_LIMIT:]
-    _save_roundtable_history(config, entries)
+    with ROUNDTABLE_HISTORY_LOCK:
+        entries = _load_roundtable_history(config)
+        now = datetime.now(UTC)
+        entry = {
+            "version_id": now.strftime("%Y%m%dT%H%M%S%fZ"),
+            "saved_at": now.isoformat().replace("+00:00", "Z"),
+            "source": source,
+            "config": cfg,
+        }
+        entries.append(entry)
+        entries = entries[-ROUNDTABLE_HISTORY_LIMIT:]
+        _save_roundtable_history(config, entries)
 
 
 def _load_roundtable_config(config) -> tuple[str, dict]:
