@@ -121,7 +121,14 @@
       <label id="importFileLabel" class="compact" for="importFile" style="display:block; margin-top:0.75rem;">Import Config JSON</label>
       <input id="importFile" type="file" accept="application/json,.json" aria-labelledby="importFileLabel">
       <button id="importRoundtable" type="button">Import to Editor (no save)</button>
-      <div id="statusMsg" class="muted" style="margin-top: 0.75rem;"></div>
+      <div
+        id="statusMsg"
+        class="muted"
+        style="margin-top: 0.75rem;"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      ></div>
     </div>
 
     <div class="panel">
@@ -370,7 +377,7 @@
 
     function exportRoundtable() {
       if (!currentRoundtable) {
-        setStatus("Load roundtable config before export.", "warn");
+        setStatus("Load or import roundtable config before export.", "warn");
         return;
       }
       const cfg = collectRoundtableFromUI();
@@ -453,9 +460,14 @@
     }
 
     const assistantPath = "/ai-assistant";
+    const assistantPathWithSlash = "/ai-assistant/";
     const currentPath = window.location.pathname || "";
-    const prefixIndex = currentPath.lastIndexOf(assistantPath);
-    const basePrefix = prefixIndex >= 0 ? currentPath.slice(0, prefixIndex) : "";
+    let basePrefix = "";
+    if (currentPath.endsWith(assistantPath)) {
+      basePrefix = currentPath.slice(0, -assistantPath.length);
+    } else if (currentPath.endsWith(assistantPathWithSlash)) {
+      basePrefix = currentPath.slice(0, -assistantPathWithSlash.length);
+    }
     el("apiBase").value = `${window.location.origin}${basePrefix}`;
     el("loadBootstrap").addEventListener("click", loadBootstrap);
     el("loadRoundtable").addEventListener("click", loadRoundtable);
