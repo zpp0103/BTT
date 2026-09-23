@@ -149,6 +149,20 @@ def test_bot_cleanup_db_errors(mocker, default_conf_usdt, caplog) -> None:
     assert freqtrade.emc.shutdown.call_count == 1
 
 
+def test_bot_cleanup_without_trade_session(mocker, monkeypatch, default_conf_usdt, caplog) -> None:
+    coo_mock = mocker.patch("freqtrade.freqtradebot.FreqtradeBot.cancel_all_open_orders")
+    cot_mock = mocker.patch("freqtrade.freqtradebot.FreqtradeBot.check_for_open_trades")
+    freqtrade = get_patched_freqtradebot(mocker, default_conf_usdt)
+    freqtrade.config["cancel_open_orders_on_exit"] = True
+    monkeypatch.delattr(Trade, "session", raising=False)
+
+    freqtrade.cleanup()
+
+    assert log_has("Cleaning up modules ...", caplog)
+    assert coo_mock.call_count == 0
+    assert cot_mock.call_count == 0
+
+
 @pytest.mark.parametrize("runmode", [RunMode.DRY_RUN, RunMode.LIVE])
 def test_order_dict(default_conf_usdt, mocker, runmode, caplog) -> None:
     patch_RPCManager(mocker)
