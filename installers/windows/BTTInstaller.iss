@@ -26,14 +26,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
-Source: "..\..\installers\windows\install-btt.bat"; DestDir: "{app}\installers\windows"; Flags: ignoreversion
-Source: "..\..\installers\windows\install-btt.ps1"; DestDir: "{app}\installers\windows"; Flags: ignoreversion
-Source: "..\..\installers\templates\config.local.desktop.json"; DestDir: "{app}\installers\templates"; Flags: ignoreversion
-Source: "..\..\requirements*.txt"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\pyproject.toml"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\README.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\freqtrade\*"; DestDir: "{app}\freqtrade"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\..\ft_client\*"; DestDir: "{app}\ft_client"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: ".git\*,.venv\*,dist\*,__pycache__\*,*.pyc,*.pyo,*.sqlite*,logfile.txt,user_data\*"
 
 [Icons]
 Name: "{group}\BTT One-Click Installer"; Filename: "{app}\installers\windows\install-btt.bat"

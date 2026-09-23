@@ -3,6 +3,9 @@ name: Build Desktop Installers
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build-windows-installer:
     runs-on: windows-latest

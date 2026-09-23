@@ -8,13 +8,18 @@ STAGE_DIR="${DIST_DIR}/btt-macos-stage"
 DMG_PATH="${DIST_DIR}/btt-macos-installer.dmg"
 
 rm -rf "${STAGE_DIR}"
-mkdir -p "${STAGE_DIR}/installers/windows" "${STAGE_DIR}/installers/macos" "${STAGE_DIR}/installers/templates"
+mkdir -p "${STAGE_DIR}"
 
-cp "${REPO_ROOT}/installers/macos/install-btt.command" "${STAGE_DIR}/installers/macos/"
-cp "${REPO_ROOT}/installers/windows/install-btt.ps1" "${STAGE_DIR}/installers/windows/"
-cp "${REPO_ROOT}/installers/windows/install-btt.bat" "${STAGE_DIR}/installers/windows/"
-cp "${REPO_ROOT}/installers/templates/config.local.desktop.json" "${STAGE_DIR}/installers/templates/"
-cp "${REPO_ROOT}/README.md" "${STAGE_DIR}/README.md"
+rsync -a --exclude '.git' \
+  --exclude '.venv' \
+  --exclude 'dist' \
+  --exclude '__pycache__' \
+  --exclude '*.pyc' \
+  --exclude '*.pyo' \
+  --exclude '*.sqlite*' \
+  --exclude 'logfile.txt' \
+  --exclude 'user_data/*' \
+  "${REPO_ROOT}/" "${STAGE_DIR}/"
 
 chmod +x "${STAGE_DIR}/installers/macos/install-btt.command"
 
