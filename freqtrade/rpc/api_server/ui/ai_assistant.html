@@ -178,7 +178,7 @@
       target.innerHTML = "";
       for (const entry of entries) {
         const li = document.createElement("li");
-        li.innerHTML = entry;
+        li.textContent = entry;
         target.appendChild(li);
       }
     }
@@ -191,18 +191,32 @@
       for (const layer of currentRoundtable.layers) {
         const section = document.createElement("section");
         section.className = "layer";
-        section.innerHTML = `
-          <h3>${layer.title}</h3>
-          <p class="muted">${layer.description || ""} <code>${layer.layer_id}</code></p>
-        `;
+        const title = document.createElement("h3");
+        title.textContent = layer.title || "";
+        section.appendChild(title);
+
+        const desc = document.createElement("p");
+        desc.className = "muted";
+        const descText = document.createTextNode(`${layer.description || ""} `);
+        const code = document.createElement("code");
+        code.textContent = layer.layer_id || "";
+        desc.appendChild(descText);
+        desc.appendChild(code);
+        section.appendChild(desc);
 
         const layerToggleId = `layer_enabled_${layer.layer_id}`;
         const layerToggle = document.createElement("div");
         layerToggle.className = "toggle-row";
-        layerToggle.innerHTML = `
-          <input id="${layerToggleId}" type="checkbox" ${layer.enabled ? "checked" : ""}>
-          <label for="${layerToggleId}" style="margin:0;">Layer enabled</label>
-        `;
+        const layerCheck = document.createElement("input");
+        layerCheck.id = layerToggleId;
+        layerCheck.type = "checkbox";
+        layerCheck.checked = !!layer.enabled;
+        const layerLabel = document.createElement("label");
+        layerLabel.setAttribute("for", layerToggleId);
+        layerLabel.style.margin = "0";
+        layerLabel.textContent = "Layer enabled";
+        layerToggle.appendChild(layerCheck);
+        layerToggle.appendChild(layerLabel);
         section.appendChild(layerToggle);
 
         for (const agent of layer.agents) {
@@ -210,15 +224,42 @@
           card.className = "agent";
           const promptId = `prompt_${layer.layer_id}_${agent.agent_id}`;
           const enabledId = `agent_enabled_${layer.layer_id}_${agent.agent_id}`;
-          card.innerHTML = `
-            <strong>${agent.name}</strong> <span class="muted">(<code>${agent.agent_id}</code>)</span>
-            <div class="toggle-row">
-              <input id="${enabledId}" type="checkbox" ${agent.enabled ? "checked" : ""}>
-              <label for="${enabledId}" style="margin:0;">Agent enabled</label>
-            </div>
-            <label for="${promptId}" class="muted">Prompt</label>
-            <textarea id="${promptId}">${agent.prompt}</textarea>
-          `;
+          const strong = document.createElement("strong");
+          strong.textContent = agent.name || "";
+          card.appendChild(strong);
+          const span = document.createElement("span");
+          span.className = "muted";
+          span.appendChild(document.createTextNode(" ("));
+          const agentCode = document.createElement("code");
+          agentCode.textContent = agent.agent_id || "";
+          span.appendChild(agentCode);
+          span.appendChild(document.createTextNode(")"));
+          card.appendChild(span);
+
+          const toggleRow = document.createElement("div");
+          toggleRow.className = "toggle-row";
+          const agentCheck = document.createElement("input");
+          agentCheck.id = enabledId;
+          agentCheck.type = "checkbox";
+          agentCheck.checked = !!agent.enabled;
+          const agentLabel = document.createElement("label");
+          agentLabel.setAttribute("for", enabledId);
+          agentLabel.style.margin = "0";
+          agentLabel.textContent = "Agent enabled";
+          toggleRow.appendChild(agentCheck);
+          toggleRow.appendChild(agentLabel);
+          card.appendChild(toggleRow);
+
+          const promptLabel = document.createElement("label");
+          promptLabel.setAttribute("for", promptId);
+          promptLabel.className = "muted";
+          promptLabel.textContent = "Prompt";
+          card.appendChild(promptLabel);
+
+          const promptText = document.createElement("textarea");
+          promptText.id = promptId;
+          promptText.value = agent.prompt || "";
+          card.appendChild(promptText);
           section.appendChild(card);
         }
 
@@ -336,7 +377,7 @@
           select.appendChild(opt);
         }
         const summary = historyEntries.map((e) =>
-          `<code>${e.version_id}</code> - ${e.saved_at} (${e.source})`
+          `${e.version_id} - ${e.saved_at} (${e.source})`
         );
         toList(el("historySummary"), summary.length ? summary : ["No history entries yet."]);
         setStatus("Prompt history loaded.", "ok");
