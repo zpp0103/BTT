@@ -2986,6 +2986,8 @@ def test_api_ai_assistant_bootstrap(botclient, tmp_path, mocker):
     assert any(x["key"] == "freqai_model_interface" for x in response["extension_points"])
     assert "Start with read-only endpoints and validate assumptions." in response["safe_workflow"]
     assert response["roundtable_config_endpoint"] == "/ai/assistant/roundtable-config"
+    assert response["roundtable_history_endpoint"] == "/ai/assistant/roundtable-config/history"
+    assert response["roundtable_rollback_endpoint"] == "/ai/assistant/roundtable-config/rollback"
 
 
 def test_api_ai_assistant_roundtable_config_get_default(botclient, tmp_path):
@@ -3021,9 +3023,11 @@ def test_api_ai_assistant_roundtable_config_post_persist(botclient, tmp_path):
                             "agent_id": "a1",
                             "name": "Analyst",
                             "prompt": "new prompt content",
+                            "enabled": False,
                             "editable": False,
                         }
                     ],
+                    "enabled": False,
                 }
             ],
         }
@@ -3034,12 +3038,16 @@ def test_api_ai_assistant_roundtable_config_post_persist(botclient, tmp_path):
     body = rc.json()
     assert body["source"] == "user_override"
     assert body["config"]["layers"][0]["agents"][0]["prompt"] == "new prompt content"
+    assert body["config"]["layers"][0]["enabled"] is False
+    assert body["config"]["layers"][0]["agents"][0]["enabled"] is False
     assert body["config"]["layers"][0]["agents"][0]["editable"] is True
 
     rc2 = client_get(client, f"{BASE_URI}/ai/assistant/roundtable-config")
     assert_response(rc2)
     assert rc2.json()["source"] == "user_override"
     assert rc2.json()["config"]["layers"][0]["agents"][0]["prompt"] == "new prompt content"
+    assert rc2.json()["config"]["layers"][0]["enabled"] is False
+    assert rc2.json()["config"]["layers"][0]["agents"][0]["enabled"] is False
 
 
 def test_api_ai_assistant_roundtable_config_fallback_on_invalid_json(botclient, tmp_path):
@@ -3076,6 +3084,103 @@ def test_api_ai_assistant_roundtable_config_fallback_on_invalid_structure(botcli
     assert payload["config"]["version"] == 1
     assert config_file.exists()
     assert not (tmp_path / "ai" / "roundtable_config.json.invalid").exists()
+
+
+def test_api_ai_assistant_roundtable_history_and_rollback(botclient, tmp_path):
+    ftbot, client = botclient
+    ftbot.config["user_data_dir"] = tmp_path
+    ftbot.config["runmode"] = RunMode.WEBSERVER
+
+    payload_v1 = {
+        "config": {
+            "version": 1,
+            "layers": [
+                {
+                    "layer_id": "l1",
+                    "title": "Layer One",
+                    "description": "first",
+                    "enabled": True,
+                    "agents": [
+                        {
+                            "agent_id": "a1",
+                            "name": "Analyst",
+                            "prompt": "first prompt",
+                            "enabled": True,
+                        }
+                    ],
+                }
+            ],
+        }
+    }
+    payload_v2 = {
+        "config": {
+            "version": 1,
+            "layers": [
+                {
+                    "layer_id": "l1",
+                    "title": "Layer One",
+                    "description": "second",
+                    "enabled": False,
+                    "agents": [
+                        {
+                            "agent_id": "a1",
+                            "name": "Analyst",
+                            "prompt": "second prompt",
+                            "enabled": False,
+                        }
+                    ],
+                }
+            ],
+        }
+    }
+
+    rc1 = client_post(client, f"{BASE_URI}/ai/assistant/roundtable-config", payload_v1)
+    assert_response(rc1)
+    rc2 = client_post(client, f"{BASE_URI}/ai/assistant/roundtable-config", payload_v2)
+    assert_response(rc2)
+
+    history_rc = client_get(client, f"{BASE_URI}/ai/assistant/roundtable-config/history")
+    assert_response(history_rc)
+    history = history_rc.json()["entries"]
+    assert len(history) == 2
+    assert history[0]["config"]["layers"][0]["agents"][0]["prompt"] == "first prompt"
+    assert history[1]["config"]["layers"][0]["agents"][0]["prompt"] == "second prompt"
+
+    rollback_target = history[0]["version_id"]
+    rb_rc = client_post(
+        client,
+        f"{BASE_URI}/ai/assistant/roundtable-config/rollback",
+        {"version_id": rollback_target},
+    )
+    assert_response(rb_rc)
+    rb_body = rb_rc.json()
+    assert rb_body["config"]["layers"][0]["agents"][0]["prompt"] == "first prompt"
+    assert rb_body["config"]["layers"][0]["enabled"] is True
+    assert rb_body["config"]["layers"][0]["agents"][0]["enabled"] is True
+
+    current_rc = client_get(client, f"{BASE_URI}/ai/assistant/roundtable-config")
+    assert_response(current_rc)
+    assert current_rc.json()["config"]["layers"][0]["agents"][0]["prompt"] == "first prompt"
+
+    history_rc2 = client_get(client, f"{BASE_URI}/ai/assistant/roundtable-config/history")
+    assert_response(history_rc2)
+    history2 = history_rc2.json()["entries"]
+    assert len(history2) == 3
+    assert history2[-1]["source"] == "rollback"
+
+
+def test_api_ai_assistant_roundtable_rollback_not_found(botclient, tmp_path):
+    ftbot, client = botclient
+    ftbot.config["user_data_dir"] = tmp_path
+    ftbot.config["runmode"] = RunMode.WEBSERVER
+
+    rc = client_post(
+        client,
+        f"{BASE_URI}/ai/assistant/roundtable-config/rollback",
+        {"version_id": "missing"},
+    )
+    assert_response(rc, 404)
+    assert rc.json()["detail"] == "Roundtable history version not found."
 
 
 def test_api_pairlists_available(botclient, tmp_path):
