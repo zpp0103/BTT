@@ -197,6 +197,24 @@ The workflow `.github/workflows/desktop-installers.yml` builds:
 
 Run this workflow from GitHub Actions (`workflow_dispatch`) and download artifacts from the run page.
 
+#### Build macOS DMG locally (DRAFT branch check)
+
+Use the following verified commands to build the local macOS installer image:
+
+```bash
+cd /home/runner/work/BTT/BTT
+git fetch origin copilot/enhance-intelligence-layer-ai-improvements
+git checkout origin/copilot/enhance-intelligence-layer-ai-improvements
+chmod +x /home/runner/work/BTT/BTT/installers/macos/install-btt.command
+bash /home/runner/work/BTT/BTT/installers/macos/build-dmg.sh
+```
+
+Output:
+
+```text
+/home/runner/work/BTT/BTT/dist/btt-macos-installer.dmg
+```
+
 ## Basic Usage
 
 ### Bot commands
