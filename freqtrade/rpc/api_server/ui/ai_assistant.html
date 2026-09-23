@@ -145,12 +145,20 @@
     const el = (id) => document.getElementById(id);
     let currentRoundtable = null;
     let historyEntries = [];
+    let controlIdCounter = 0;
+    const layerEnabledControls = new Map();
+    const agentControls = new Map();
     const apiRoutes = {
       bootstrap: "/api/v1/ai/assistant/bootstrap",
       roundtableConfig: "/api/v1/ai/assistant/roundtable-config",
       roundtableHistory: "/api/v1/ai/assistant/roundtable-config/history",
       roundtableRollback: "/api/v1/ai/assistant/roundtable-config/rollback",
     };
+
+    function nextControlId(prefix) {
+      controlIdCounter += 1;
+      return `${prefix}_${controlIdCounter}`;
+    }
 
     function withApiPrefix(path) {
       if (!path) {
@@ -207,6 +215,8 @@
       currentRoundtable = structuredClone(config);
       const root = el("roundtableLayers");
       root.replaceChildren();
+      layerEnabledControls.clear();
+      agentControls.clear();
 
       for (const layer of currentRoundtable.layers) {
         const section = document.createElement("section");
@@ -224,13 +234,14 @@
         desc.appendChild(code);
         section.appendChild(desc);
 
-        const layerToggleId = `layer_enabled_${layer.layer_id}`;
+        const layerToggleId = nextControlId("layer_enabled");
         const layerToggle = document.createElement("div");
         layerToggle.className = "toggle-row";
         const layerCheck = document.createElement("input");
         layerCheck.id = layerToggleId;
         layerCheck.type = "checkbox";
         layerCheck.checked = !!layer.enabled;
+        layerEnabledControls.set(layer.layer_id, layerCheck);
         const layerLabel = document.createElement("label");
         layerLabel.setAttribute("for", layerToggleId);
         layerLabel.style.margin = "0";
@@ -242,8 +253,9 @@
         for (const agent of layer.agents) {
           const card = document.createElement("div");
           card.className = "agent";
-          const promptId = `prompt_${layer.layer_id}_${agent.agent_id}`;
-          const enabledId = `agent_enabled_${layer.layer_id}_${agent.agent_id}`;
+          const promptId = nextControlId("prompt");
+          const enabledId = nextControlId("agent_enabled");
+          const agentControlKey = `${layer.layer_id}::${agent.agent_id}`;
           const strong = document.createElement("strong");
           strong.textContent = agent.name || "";
           card.appendChild(strong);
@@ -279,6 +291,10 @@
           const promptText = document.createElement("textarea");
           promptText.id = promptId;
           promptText.value = agent.prompt || "";
+          agentControls.set(agentControlKey, {
+            prompt: promptText,
+            enabled: agentCheck,
+          });
           card.appendChild(promptText);
           section.appendChild(card);
         }
@@ -294,10 +310,12 @@
     function collectRoundtableFromUI() {
       const cfg = structuredClone(currentRoundtable);
       for (const layer of cfg.layers) {
-        layer.enabled = !!el(`layer_enabled_${layer.layer_id}`)?.checked;
+        layer.enabled = !!layerEnabledControls.get(layer.layer_id)?.checked;
         for (const agent of layer.agents) {
-          agent.prompt = (el(`prompt_${layer.layer_id}_${agent.agent_id}`)?.value || "").trim();
-          agent.enabled = !!el(`agent_enabled_${layer.layer_id}_${agent.agent_id}`)?.checked;
+          const agentControlKey = `${layer.layer_id}::${agent.agent_id}`;
+          const controlRef = agentControls.get(agentControlKey);
+          agent.prompt = (controlRef?.prompt?.value || "").trim();
+          agent.enabled = !!controlRef?.enabled?.checked;
           agent.editable = true;
         }
       }
@@ -361,8 +379,13 @@
       const a = document.createElement("a");
       a.href = url;
       a.download = "roundtable_config.export.json";
+      a.style.display = "none";
+      document.body.appendChild(a);
       a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
+      setTimeout(() => {
+        a.remove();
+        URL.revokeObjectURL(url);
+      }, 1000);
       setStatus("Roundtable config exported.", "ok");
     }
 
