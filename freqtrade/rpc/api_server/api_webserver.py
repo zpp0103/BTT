@@ -179,19 +179,23 @@ def _save_roundtable_history(config, entries: list[dict]) -> None:
     )
 
 
+def _append_roundtable_history_entry_unlocked(config, cfg: dict, source: str) -> None:
+    entries = _load_roundtable_history(config)
+    now = datetime.now(UTC)
+    entry = {
+        "version_id": now.strftime("%Y%m%dT%H%M%S%fZ"),
+        "saved_at": now.isoformat().replace("+00:00", "Z"),
+        "source": source,
+        "config": cfg,
+    }
+    entries.append(entry)
+    entries = entries[-ROUNDTABLE_HISTORY_LIMIT:]
+    _save_roundtable_history(config, entries)
+
+
 def _append_roundtable_history_entry(config, cfg: dict, source: str) -> None:
     with ROUNDTABLE_HISTORY_LOCK:
-        entries = _load_roundtable_history(config)
-        now = datetime.now(UTC)
-        entry = {
-            "version_id": now.strftime("%Y%m%dT%H%M%S%fZ"),
-            "saved_at": now.isoformat().replace("+00:00", "Z"),
-            "source": source,
-            "config": cfg,
-        }
-        entries.append(entry)
-        entries = entries[-ROUNDTABLE_HISTORY_LIMIT:]
-        _save_roundtable_history(config, entries)
+        _append_roundtable_history_entry_unlocked(config, cfg, source)
 
 
 def _load_roundtable_config(config) -> tuple[str, dict]:
@@ -424,19 +428,20 @@ def rollback_ai_assistant_roundtable_config(
     payload: AIRoundtableRollbackPayload,
     config=Depends(get_config),
 ):
-    entries = _load_roundtable_history(config)
-    selected = next((e for e in entries if e["version_id"] == payload.version_id), None)
-    if not selected:
-        raise HTTPException(status_code=404, detail="Roundtable history version not found.")
+    with ROUNDTABLE_HISTORY_LOCK:
+        entries = _load_roundtable_history(config)
+        selected = next((e for e in entries if e["version_id"] == payload.version_id), None)
+        if not selected:
+            raise HTTPException(status_code=404, detail="Roundtable history version not found.")
 
-    config_file = _roundtable_config_file(config)
-    config_file.parent.mkdir(parents=True, exist_ok=True)
-    config_file.write_text(
-        rapidjson.dumps(selected["config"], indent=2, sort_keys=True),
-        encoding="utf-8",
-    )
-    _append_roundtable_history_entry(config, selected["config"], source="rollback")
-    return {"source": "user_override", "config": selected["config"]}
+        config_file = _roundtable_config_file(config)
+        config_file.parent.mkdir(parents=True, exist_ok=True)
+        config_file.write_text(
+            rapidjson.dumps(selected["config"], indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        _append_roundtable_history_entry_unlocked(config, selected["config"], source="rollback")
+        return {"source": "user_override", "config": selected["config"]}
 
 
 @router.get(
