@@ -18,10 +18,7 @@ rsync -a --exclude '.git' \
   --exclude '*.pyo' \
   --exclude '*.sqlite*' \
   --exclude 'logfile.txt' \
-  --exclude 'user_data/data' \
-  --exclude 'user_data/backtest_results' \
-  --exclude 'user_data/logs' \
-  --exclude 'user_data/freqaimodels' \
+  --exclude 'user_data' \
   "${REPO_ROOT}/" "${STAGE_DIR}/"
 
 chmod +x "${STAGE_DIR}/installers/macos/install-btt.command"

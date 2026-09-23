@@ -153,6 +153,7 @@
     let currentRoundtable = null;
     let historyEntries = [];
     let controlIdCounter = 0;
+    const EXPORT_URL_REVOKE_DELAY_MS = 5000;
     const layerEnabledControls = new Map();
     const agentControls = new Map();
     const apiRoutes = {
@@ -215,6 +216,43 @@
         const li = document.createElement("li");
         li.textContent = entry;
         target.appendChild(li);
+      }
+    }
+
+    function assertImportedRoundtableShape(config) {
+      if (!config || typeof config !== "object" || !Array.isArray(config.layers)) {
+        throw new Error("Invalid format: missing layers array.");
+      }
+      for (const [layerIndex, layer] of config.layers.entries()) {
+        if (!layer || typeof layer !== "object") {
+          throw new Error(`Invalid layer at index ${layerIndex}.`);
+        }
+        if (typeof layer.layer_id !== "string" || !layer.layer_id) {
+          throw new Error(`Layer ${layerIndex} is missing layer_id.`);
+        }
+        if (typeof layer.title !== "string") {
+          throw new Error(`Layer ${layer.layer_id} is missing title.`);
+        }
+        if (layer.description !== undefined && layer.description !== null && typeof layer.description !== "string") {
+          throw new Error(`Layer ${layer.layer_id} has invalid description.`);
+        }
+        if (!Array.isArray(layer.agents)) {
+          throw new Error(`Layer ${layer.layer_id} is missing agents array.`);
+        }
+        for (const [agentIndex, agent] of layer.agents.entries()) {
+          if (!agent || typeof agent !== "object") {
+            throw new Error(`Invalid agent at index ${agentIndex} in layer ${layer.layer_id}.`);
+          }
+          if (typeof agent.agent_id !== "string" || !agent.agent_id) {
+            throw new Error(`Layer ${layer.layer_id} agent ${agentIndex} is missing agent_id.`);
+          }
+          if (typeof agent.name !== "string") {
+            throw new Error(`Agent ${agent.agent_id} in layer ${layer.layer_id} is missing name.`);
+          }
+          if (typeof agent.prompt !== "string") {
+            throw new Error(`Agent ${agent.agent_id} in layer ${layer.layer_id} is missing prompt.`);
+          }
+        }
       }
     }
 
@@ -390,9 +428,9 @@
       document.body.appendChild(a);
       a.click();
       a.remove();
-      requestAnimationFrame(() => {
+      setTimeout(() => {
         URL.revokeObjectURL(url);
-      });
+      }, EXPORT_URL_REVOKE_DELAY_MS);
       setStatus("Roundtable config exported.", "ok");
     }
 
@@ -405,14 +443,12 @@
       const file = fileInput.files[0];
       setStatus("Importing config into editor...");
       try {
-        const text = await file.text();
-        const parsed = JSON.parse(text);
-        if (!parsed.layers || !Array.isArray(parsed.layers)) {
-          throw new Error("Invalid format: missing layers array.");
-        }
-        renderRoundtable(parsed, "imported_file");
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      assertImportedRoundtableShape(parsed);
+      renderRoundtable(parsed, "imported_file");
       } catch (err) {
-        setStatus(`Import failed: ${err.message}`, "warn");
+      setStatus(`Import failed: ${err.message}`, "warn");
       }
     }
 
