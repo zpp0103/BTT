@@ -172,6 +172,9 @@ def test_api_ui_fallback(botclient, mocker):
     rc = client_get(client, "/fallback_file.html")
     assert rc.status_code == 200
     assert "`freqtrade install-ui`" in rc.text
+    assert "English" in rc.text
+    assert "中文" in rc.text
+    assert "freqtrade-ui-language" in rc.text
 
     # Forwarded to fallback_html or index.html (depending if it's installed or not)
     rc = client_get(client, "/something")
