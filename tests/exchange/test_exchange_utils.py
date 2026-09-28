@@ -80,13 +80,13 @@ def test_check_exchange(default_conf, caplog) -> None:
     caplog.clear()
 
     # Test a 'bad' exchange, which known to have serious problems
-    default_conf.get("exchange").update({"name": "bitmex"})
+    default_conf.get("exchange").update({"name": "poloniex"})
     with pytest.raises(OperationalException, match=r"Exchange .* will not work with Freqtrade\..*"):
         check_exchange(default_conf)
     caplog.clear()
 
     # Test a 'bad' exchange with check_for_bad=False
-    default_conf.get("exchange").update({"name": "bitmex"})
+    default_conf.get("exchange").update({"name": "poloniex"})
     assert check_exchange(default_conf, False)
     assert log_has_re(
         r"Exchange .* is known to the ccxt library, available for the bot, "
@@ -185,6 +185,12 @@ def test_timeframe_to_prev_date():
         ("4h", dt_utc(2019, 8, 12, 12, 00, 0)),
         # 1d -> 2019-08-12 00:00:00
         ("1d", dt_utc(2019, 8, 12, 00, 00, 0)),
+        # 1w -> 2019-08-12 00:00:00
+        ("1w", dt_utc(2019, 8, 12, 00, 00, 0)),
+        # 1M -> 2019-08-01 00:00:00
+        ("1M", dt_utc(2019, 8, 1, 00, 00, 0)),
+        # 1y -> 2019-01-01 00:00:00
+        ("1y", dt_utc(2019, 1, 1, 00, 00, 0)),
     ]
     for interval, result in tf_list:
         assert timeframe_to_prev_date(interval, date) == result
@@ -214,8 +220,13 @@ def test_timeframe_to_next_date():
         ("4h", dt_utc(2019, 8, 12, 16, 00, 0)),
         # 1d -> 2019-08-13 00:00:00
         ("1d", dt_utc(2019, 8, 13, 0, 0, 0)),
+        # 1w -> 2019-08-19 00:00:00
+        ("1w", dt_utc(2019, 8, 19, 0, 0, 0)),
+        # 1M -> 2019-09-01 00:00:00
+        ("1M", dt_utc(2019, 9, 1, 0, 0, 0)),
+        # 1y -> 2020-01-01 00:00:00
+        ("1y", dt_utc(2020, 1, 1, 0, 0, 0)),
     ]
-
     for interval, result in tf_list:
         assert timeframe_to_next_date(interval, date) == result
 
