@@ -20,7 +20,16 @@ const todayProfit = computed(() => {
 });
 const recentTrades = computed(() => [...(props.data?.openTrades ?? []), ...(props.data?.closedTrades ?? [])].sort((a, b) => (b.close_timestamp ?? b.open_timestamp) - (a.close_timestamp ?? a.open_timestamp)).slice(0, 6));
 const healthFresh = computed(() => !!props.data?.health?.last_process_ts && Date.now() - normalizedTs(props.data.health.last_process_ts) < 60_000);
-const errorSummary = computed(() => props.data?.errors.map((error) => `${error.endpoint}: ${error.message}`).join("；") ?? "");
+const errorSummary = computed(() => {
+  const errors = props.data?.errors ?? [];
+  const visible = errors.slice(0, 3).map((error) => `${error.endpoint}: ${error.message}`);
+  return `${visible.join("；")}${errors.length > visible.length ? `；另有 ${errors.length - visible.length} 项` : ""}`;
+});
+const riskStatus = computed(() => {
+  if (!props.data?.profit) return { label: "数据不可用", elevated: false };
+  if (props.data.profit.current_drawdown > 0.1) return { label: "回撤升高", elevated: true };
+  return { label: "风险正常", elevated: false };
+});
 
 function normalizedTs(value: number): number {
   return value < 10_000_000_000 ? value * 1000 : value;
@@ -48,7 +57,13 @@ const timestamp = (value: number | null) => value ? new Date(normalizedTs(value)
     </header>
 
     <StateBlock v-if="state === 'loading' && !data" state="loading" detail="正在连接 Freqtrade API 并加载账户数据" />
-    <StateBlock v-else-if="state === 'error' && !data" state="error" title="无法加载总览" detail="请在系统设置中检查 API 地址和登录状态。" />
+    <div v-else-if="state === 'error'" class="panel terminal-error">
+      <StateBlock state="error" title="无法加载实时数据" detail="所有总览接口均请求失败。为避免显示误导性的零值，数据面板已暂停展示。" />
+      <div class="state-actions">
+        <button class="primary-button" type="button" @click="emit('refresh')">重新连接</button>
+        <button class="secondary-button" type="button" @click="emit('navigate', '/settings')">检查系统设置</button>
+      </div>
+    </div>
     <template v-else-if="data">
       <div v-if="data.errors.length" class="inline-alert" role="alert">
         <Icon name="alert" /><div><strong>部分实时数据加载失败</strong><span>{{ errorSummary }}</span></div>
@@ -95,7 +110,7 @@ const timestamp = (value: number | null) => value ? new Date(normalizedTs(value)
             <div><strong>{{ data.config?.strategy ?? "未加载策略" }}</strong><span>{{ data.config?.exchange ?? "—" }} · {{ data.config?.trading_mode ?? "—" }}</span></div>
           </div>
           <dl class="data-list">
-            <div><dt>运行模式</dt><dd><span class="status-dot"></span>{{ data.config?.dry_run ? "模拟交易" : "实盘交易" }}</dd></div>
+            <div><dt>运行模式</dt><dd><template v-if="data.config"><span class="status-dot"></span>{{ data.config.dry_run ? "模拟交易" : "实盘交易" }}</template><template v-else>未知</template></dd></div>
             <div><dt>已完成交易</dt><dd>{{ data.profit?.closed_trade_count ?? "—" }}</dd></div>
             <div><dt>胜率</dt><dd>{{ data.profit ? `${(data.profit.winrate * 100).toFixed(1)}%` : "—" }}</dd></div>
             <div><dt>Profit Factor</dt><dd>{{ data.profit?.profit_factor?.toFixed(2) ?? "—" }}</dd></div>
@@ -114,7 +129,7 @@ const timestamp = (value: number | null) => value ? new Date(normalizedTs(value)
         </article>
 
         <article class="panel risk-panel">
-          <div class="panel-head"><div><span class="section-label">RISK</span><h2>风险概览</h2></div><span class="risk-level" :class="{ elevated: (data.profit?.current_drawdown ?? 0) > .1 }">风险正常</span></div>
+          <div class="panel-head"><div><span class="section-label">RISK</span><h2>风险概览</h2></div><span class="risk-level" :class="{ elevated: riskStatus.elevated }">{{ riskStatus.label }}</span></div>
           <div class="risk-gauge">
             <div><span>当前回撤</span><strong>{{ data.profit ? `${(data.profit.current_drawdown * 100).toFixed(2)}%` : "—" }}</strong></div>
             <div class="gauge-track"><span :style="{ width: `${Math.min((data.profit?.current_drawdown ?? 0) * 500, 100)}%` }"></span></div>
@@ -151,7 +166,7 @@ const timestamp = (value: number | null) => value ? new Date(normalizedTs(value)
             <li><span><i :class="{ ok: data.ping }"></i>API 服务</span><strong>{{ data.ping ? "在线" : "离线" }}</strong></li>
             <li><span><i :class="{ ok: healthFresh }"></i>交易引擎</span><strong>{{ healthFresh ? "运行正常" : "心跳异常" }}</strong></li>
             <li><span><i :class="{ ok: !!data.config?.exchange }"></i>交易所连接</span><strong>{{ data.config?.exchange ?? "未知" }}</strong></li>
-            <li><span><i class="ok"></i>系统资源</span><strong>{{ data.sysinfo ? `CPU ${data.sysinfo.cpu_avg.toFixed(0)}% · RAM ${data.sysinfo.ram_pct.toFixed(0)}%` : "不可用" }}</strong></li>
+            <li><span><i :class="{ ok: !!data.sysinfo }"></i>系统资源</span><strong>{{ data.sysinfo ? `CPU ${data.sysinfo.cpu_avg.toFixed(0)}% · RAM ${data.sysinfo.ram_pct.toFixed(0)}%` : "不可用" }}</strong></li>
           </ul>
         </article>
       </div>

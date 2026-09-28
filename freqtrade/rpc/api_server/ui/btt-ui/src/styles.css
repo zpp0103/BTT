@@ -158,6 +158,11 @@ td strong { color: var(--text); font-weight: 550; }
 .state-block strong { color: var(--text-2); font-size: 11px; font-weight: 550; }
 .state-block p { margin: 5px 0 0; max-width: 420px; color: var(--text-3); font-size: 10px; line-height: 1.6; }
 .state-error .icon { color: var(--loss); }
+.terminal-error { min-height: 300px; display: grid; place-content: center; }
+.terminal-error .state-block { min-height: auto; }
+.state-actions { display: flex; justify-content: center; gap: 10px; margin-top: 22px; }
+.secondary-button { height: 38px; padding: 0 16px; color: var(--text-2); background: transparent; border: 1px solid var(--border); border-radius: 4px; font-size: 10px; font-weight: 650; cursor: pointer; }
+.secondary-button:hover { color: var(--text); border-color: #3a4454; }
 .spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .module-hero { display: flex; gap: 18px; align-items: center; margin-bottom: 16px; padding: 26px; background: linear-gradient(115deg, #131a24, #10151d); }
