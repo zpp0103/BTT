@@ -9,6 +9,9 @@
 ruff==0.16.8
 mypy==2.3.1
 pre-commit==4.6.2
+# crypto_quant_ai runtime dep: backend/core/config.py uses pydantic_settings.BaseSettings.
+# Not declared in base requirements.txt, so it must live here to avoid an ImportError on `import crypto_quant_ai`.
+pydantic_settings==2.15.0
 pytest==9.1.1
 pytest-asyncio==1.4.0
 pytest-cov==7.1.0
