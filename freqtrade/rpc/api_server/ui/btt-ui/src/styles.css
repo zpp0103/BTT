@@ -184,6 +184,7 @@ input::placeholder { color: #495364; }
 .connection-message { display: flex; align-items: center; gap: 8px; margin: 2px 0 18px; color: var(--text-3); font-size: 10px; }
 .connection-message.success { color: var(--accent); }
 .connection-message.error { color: var(--loss); }
+.form-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .primary-button { height: 38px; padding: 0 16px; border: 1px solid var(--accent); border-radius: 4px; color: #07130f; background: var(--accent); font-size: 10px; font-weight: 700; cursor: pointer; }
 .primary-button:disabled { opacity: .55; cursor: wait; }
 .security-note h2 { margin: 6px 0 16px; font-size: 14px; }

@@ -34,7 +34,7 @@ export function parseEquity(history: WalletHistory | null): EquityPoint[] {
     const rawTime = row[timeIndex];
     const timestamp = typeof rawTime === "number" ? (rawTime < 10_000_000_000 ? rawTime * 1000 : rawTime) : Date.parse(String(rawTime));
     return Number.isFinite(value) && Number.isFinite(timestamp) ? [{ timestamp, value }] : [];
-  });
+  }).sort((a, b) => a.timestamp - b.timestamp);
 }
 
 export async function loadDashboard(useDemo = false): Promise<DashboardData> {

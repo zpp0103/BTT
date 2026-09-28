@@ -21,7 +21,8 @@ const linePath = computed(() => coords.value.map((point, index) => `${index ? "L
 const areaPath = computed(() => `${linePath.value} L ${width - pad} ${height} L ${pad} ${height} Z`);
 const change = computed(() => {
   if (props.points.length < 2) return 0;
-  return ((props.points.at(-1)!.value / props.points[0].value) - 1) * 100;
+  const first = props.points[0].value;
+  return first ? ((props.points.at(-1)!.value / first) - 1) * 100 : 0;
 });
 const format = (value: number) => new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 }).format(value);
 </script>

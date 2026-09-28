@@ -32,3 +32,10 @@ The dashboard reads the existing Freqtrade API only:
 
 Requests are isolated so one failing endpoint does not hide other live data.
 Demo data is opt-in and always marked `DEMO`.
+
+## Authentication
+
+System Settings exchanges API credentials for Freqtrade JWTs. Credentials are
+never stored; access and refresh tokens live in `sessionStorage`, expired access
+tokens are refreshed automatically, and **Disconnect current session** clears
+the saved tokens immediately.

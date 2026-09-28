@@ -72,25 +72,26 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="app-shell">
-    <button class="mobile-menu" type="button" aria-label="打开导航" @click="menuOpen = !menuOpen"><span></span><span></span><span></span></button>
+    <button class="mobile-menu" type="button" aria-label="切换导航" :aria-expanded="menuOpen" aria-controls="primary-navigation" @click="menuOpen = !menuOpen"><span></span><span></span><span></span></button>
     <aside class="sidebar" :class="{ open: menuOpen }">
       <div class="brand">
         <div class="brand-mark"><span></span><span></span><span></span></div>
         <div><strong>BTT</strong><small>QUANT TERMINAL</small></div>
       </div>
-      <nav aria-label="主导航">
+      <nav id="primary-navigation" aria-label="主导航">
         <span class="nav-section">交易工作台</span>
         <a
           v-for="route in routes.slice(0, 6)"
           :key="route.path"
           :href="route.path"
           :class="{ active: currentRoute.key === route.key }"
+          :aria-current="currentRoute.key === route.key ? 'page' : undefined"
           @click.prevent="navigate(route.path)"
         >
           <Icon :name="route.icon" /><span>{{ route.label }}</span>
         </a>
         <span class="nav-section nav-system">系统</span>
-        <a href="/settings" :class="{ active: currentRoute.key === 'settings' }" @click.prevent="navigate('/settings')">
+        <a href="/settings" :class="{ active: currentRoute.key === 'settings' }" :aria-current="currentRoute.key === 'settings' ? 'page' : undefined" @click.prevent="navigate('/settings')">
           <Icon name="settings" /><span>系统设置</span>
         </a>
       </nav>

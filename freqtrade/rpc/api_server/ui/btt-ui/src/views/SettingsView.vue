@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { ApiError, loadApiConfig, login } from "@/api/client";
+import { ApiError, clearApiConfig, loadApiConfig, login } from "@/api/client";
 import Icon from "@/components/Icon.vue";
 
 const emit = defineEmits<{ connected: [] }>();
@@ -25,6 +25,15 @@ async function connect() {
     message.value = error instanceof ApiError ? `${error.status} · ${error.message}` : "无法连接 API";
   }
 }
+
+function disconnect() {
+  clearApiConfig();
+  username.value = "";
+  password.value = "";
+  state.value = "idle";
+  message.value = "会话已断开，浏览器中保存的令牌已清除";
+  emit("connected");
+}
 </script>
 
 <template>
@@ -40,7 +49,10 @@ async function connect() {
             <label><span>密码</span><input v-model="password" required type="password" autocomplete="current-password" /></label>
           </div>
           <div class="connection-message" :class="state"><Icon :name="state === 'error' ? 'alert' : 'server'" /><span>{{ message }}</span></div>
-          <button class="primary-button" type="submit" :disabled="state === 'loading'">{{ state === "loading" ? "正在连接…" : "验证并连接" }}</button>
+          <div class="form-actions">
+            <button class="primary-button" type="submit" :disabled="state === 'loading'">{{ state === "loading" ? "正在连接…" : "验证并连接" }}</button>
+            <button v-if="state === 'success'" class="secondary-button" type="button" @click="disconnect">断开当前会话</button>
+          </div>
         </form>
       </article>
       <aside class="panel security-note">
