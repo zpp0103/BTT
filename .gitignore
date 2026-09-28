@@ -121,3 +121,6 @@ target/
 !config_examples/config_paper_roundtable.json
 
 docker-compose-*.yml
+
+# macOS 打包构建产物（由 installers/macos/make-app.sh 生成）
+*.app/
