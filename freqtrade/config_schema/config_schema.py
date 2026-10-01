@@ -881,7 +881,7 @@ CONF_SCHEMA = {
                 "timeout_seconds": {
                     "type": "number",
                     "minimum": 1,
-                    "default": 90,
+                    "default": 300,
                 },
             },
         },

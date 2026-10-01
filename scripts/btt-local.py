@@ -110,7 +110,7 @@ def generate_config() -> tuple[str, str]:
             ),
             "model": os.environ.get("BTT_AI_MODEL", "qwen2.5:1.5b"),
             "api_key_env": "BTT_AI_API_KEY",
-            "timeout_seconds": 90,
+            "timeout_seconds": 300,
         },
     }
     LOCAL_CONFIG.write_text(json.dumps(payload, indent=2) + "\n")

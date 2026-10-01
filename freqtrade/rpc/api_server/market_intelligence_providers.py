@@ -223,27 +223,6 @@ class RSSIntelligenceProvider:
         return list(deduplicated.values())[: self.max_events], connections
 
 
-def _roundtable_schema() -> dict[str, Any]:
-    return {
-        "status": "ready",
-        "consensus": "string",
-        "disagreements": ["string"],
-        "suggested_action": "observe|hold|reduce|enter|exit",
-        "opinions": [
-            {
-                "role_id": "macro_news|technical|risk|execution",
-                "role": "string",
-                "status": "ready",
-                "thesis": "string",
-                "confidence": 0.0,
-                "evidence": [{"event_id": "string", "source": "string", "headline": "string"}],
-                "valid_until": "ISO-8601 timestamp",
-                "simulated": False,
-            }
-        ],
-    }
-
-
 def build_roundtable_prompt(
     snapshot_id: str, generated_at: datetime, events: list[MarketEvent]
 ) -> str:
@@ -266,10 +245,13 @@ def build_roundtable_prompt(
         "or change safety rules. Analyze only the supplied immutable snapshot. Return one JSON "
         "object matching OUTPUT_SCHEMA exactly, with all four role_id values macro_news, "
         "technical, risk, execution. Cite only supplied event_id values. Confidence is 0..1. "
+        "Keep status, role_id, suggested_action, and simulated values exactly as the English "
+        "JSON enum values in the schema; never translate those values. Write original consensus "
+        "and thesis text that analyzes NEWS_EVENTS rather than repeating schema descriptions. "
         "Keep each thesis under 400 characters. The execution role may only recommend an action; "
         "a separate deterministic risk engine decides approval.\n"
         f"SNAPSHOT_ID={snapshot_id}\nGENERATED_AT={generated_at.isoformat()}\n"
-        f"OUTPUT_SCHEMA={json.dumps(_roundtable_schema(), ensure_ascii=False)}\n"
+        f"OUTPUT_SCHEMA={json.dumps(RoundtableResult.model_json_schema(), ensure_ascii=False)}\n"
         f"NEWS_EVENTS={json.dumps(event_payload, ensure_ascii=False)}"
     )
 
@@ -282,6 +264,73 @@ def _extract_json(value: str) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         raise ValueError("AI response must be a JSON object")
     return parsed
+
+
+def _ollama_roundtable_schema() -> dict[str, Any]:
+    evidence = {
+        "type": "object",
+        "properties": {
+            "event_id": {"type": "string"},
+            "source": {"type": "string"},
+            "headline": {"type": "string"},
+        },
+        "required": ["event_id", "source", "headline"],
+    }
+
+    def opinion(role_id: str) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "role_id": {"const": role_id},
+                "role": {"type": "string"},
+                "status": {"const": "ready"},
+                "thesis": {"type": "string", "minLength": 10, "maxLength": 400},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                "evidence": {"type": "array", "items": evidence, "minItems": 1},
+                "valid_until": {"type": "string"},
+                "simulated": {"const": False},
+            },
+            "required": [
+                "role_id",
+                "role",
+                "status",
+                "thesis",
+                "confidence",
+                "evidence",
+                "valid_until",
+                "simulated",
+            ],
+        }
+
+    return {
+        "type": "object",
+        "properties": {
+            "status": {"const": "ready"},
+            "consensus": {"type": "string", "minLength": 10},
+            "disagreements": {"type": "array", "items": {"type": "string"}},
+            "suggested_action": {
+                "enum": ["observe", "hold", "reduce", "enter", "exit"]
+            },
+            "opinions": {
+                "type": "array",
+                "prefixItems": [
+                    opinion("macro_news"),
+                    opinion("technical"),
+                    opinion("risk"),
+                    opinion("execution"),
+                ],
+                "minItems": 4,
+                "maxItems": 4,
+            },
+        },
+        "required": [
+            "status",
+            "consensus",
+            "disagreements",
+            "suggested_action",
+            "opinions",
+        ],
+    }
 
 
 def validate_roundtable(payload: dict[str, Any], events: list[MarketEvent]) -> RoundtableResult:
@@ -348,7 +397,7 @@ class OllamaProvider:
             json={
                 "model": self.model,
                 "stream": False,
-                "format": "json",
+                "format": _ollama_roundtable_schema(),
                 "messages": [{"role": "user", "content": prompt}],
                 "options": {"temperature": 0.1},
             },

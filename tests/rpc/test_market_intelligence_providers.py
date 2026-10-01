@@ -125,8 +125,10 @@ def test_roundtable_rejects_unknown_evidence():
 
 def test_ollama_provider_returns_strict_json(monkeypatch):
     expected = {"status": "ready", "opinions": []}
+    captured = {}
 
     def fake_post(*args, **kwargs):
+        captured.update(kwargs["json"])
         request = httpx.Request("POST", args[0])
         return httpx.Response(
             200,
@@ -140,6 +142,11 @@ def test_ollama_provider_returns_strict_json(monkeypatch):
     ).analyze("safe prompt")
 
     assert result == expected
+    opinions = captured["format"]["properties"]["opinions"]
+    assert opinions["minItems"] == opinions["maxItems"] == 4
+    assert [
+        item["properties"]["role_id"]["const"] for item in opinions["prefixItems"]
+    ] == ["macro_news", "technical", "risk", "execution"]
 
 
 def test_openai_provider_requires_server_side_key(monkeypatch):

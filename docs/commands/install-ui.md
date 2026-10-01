@@ -65,7 +65,7 @@ The configuration points are:
     "provider": "ollama",
     "base_url": "http://127.0.0.1:11434",
     "model": "qwen2.5:1.5b",
-    "timeout_seconds": 90
+    "timeout_seconds": 300
   }
 }
 ```
@@ -127,12 +127,18 @@ model settings need to change. Generate a random local API password and JWT
 secret, then start webserver mode:
 
 ``` bash
+OLLAMA_HOST=127.0.0.1:11434 ollama serve
+OLLAMA_HOST=127.0.0.1:11434 ollama pull qwen2.5:1.5b
 .venv/bin/python scripts/btt-local.py generate-config
 .venv/bin/python scripts/btt-local.py start
 ```
 
 The generated config and credentials are under ignored `user_data/`, mode 0600.
 The script refuses to replace an occupied port and never kills another process.
+The 1.5B model is the local default because the 0.5B variant may repeat the
+output schema instead of producing grounded role analysis. On Intel macOS the
+first 1.5B inference can take several minutes, so the local example uses a
+300-second AI timeout; later warm requests are normally faster.
 For frontend development use:
 
 ``` bash
