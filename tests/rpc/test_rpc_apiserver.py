@@ -206,6 +206,24 @@ def test_api_ui_version(botclient, mocker):
     assert rc.json()["version"] == "0.1.2"
 
 
+def test_api_market_intelligence_unconfigured(botclient):
+    _ftbot, client = botclient
+
+    rc = client_get(client, f"{BASE_URI}/market_intelligence")
+    assert_response(rc)
+    payload = rc.json()
+    assert payload["source_mode"] == "live"
+    assert payload["events"] == []
+    assert {provider["status"] for provider in payload["providers"]} == {"unconfigured"}
+    assert payload["roundtable"]["status"] == "unavailable"
+    assert payload["risk_decision"]["approved"] is False
+    assert payload["execution"] == {
+        "mode": "observe_only",
+        "status": "disabled",
+        "message": "第一版仅提供观察与建议；AI 不持有交易所密钥，也不能直接下单。",
+    }
+
+
 def test_api_auth():
     with pytest.raises(ValueError):
         create_token({"identity": {"u": "Freqtrade"}}, _JWT_SECRET_KEY, token_type="NotATokenType")

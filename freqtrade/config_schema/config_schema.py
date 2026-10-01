@@ -819,6 +819,32 @@ CONF_SCHEMA = {
                 "jwt_secret_key",
             ],
         },
+        "btt_market_intelligence": {
+            "description": "BTT market intelligence provider settings.",
+            "type": "object",
+            "properties": {
+                "provider": {
+                    "description": "Provider adapter identifier. No external adapter is bundled.",
+                    "type": "string",
+                },
+                "max_age_seconds": {
+                    "description": "Maximum intelligence snapshot age accepted by the risk gate.",
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 300,
+                },
+            },
+        },
+        "btt_ai": {
+            "description": "BTT AI roundtable provider settings.",
+            "type": "object",
+            "properties": {
+                "provider": {
+                    "description": "AI provider adapter identifier. No model adapter is bundled.",
+                    "type": "string",
+                },
+            },
+        },
         # end of RPC section
         "db_url": {
             "description": "Database connection URL.",

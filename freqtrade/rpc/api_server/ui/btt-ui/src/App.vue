@@ -4,6 +4,7 @@ import { loadDashboard } from "@/api/dashboard";
 import type { DashboardData, LoadState } from "@/api/types";
 import Icon from "@/components/Icon.vue";
 import DashboardView from "@/views/DashboardView.vue";
+import IntelligenceView from "@/views/IntelligenceView.vue";
 import ModuleView from "@/views/ModuleView.vue";
 import SettingsView from "@/views/SettingsView.vue";
 
@@ -14,6 +15,7 @@ const routes = [
   { path: "/backtest", key: "backtest", label: "回测分析", icon: "backtest" },
   { path: "/positions", key: "positions", label: "持仓与订单", icon: "orders" },
   { path: "/risk", key: "risk", label: "风险控制", icon: "risk" },
+  { path: "/intelligence", key: "intelligence", label: "市场情报", icon: "intelligence" },
   { path: "/settings", key: "settings", label: "系统设置", icon: "settings" },
 ];
 
@@ -81,7 +83,7 @@ onBeforeUnmount(() => {
       <nav id="primary-navigation" aria-label="主导航">
         <span class="nav-section">交易工作台</span>
         <a
-          v-for="route in routes.slice(0, 6)"
+          v-for="route in routes.slice(0, -1)"
           :key="route.path"
           :href="route.path"
           :class="{ active: currentRoute.key === route.key }"
@@ -113,6 +115,7 @@ onBeforeUnmount(() => {
         @navigate="navigate"
       />
       <SettingsView v-else-if="currentRoute.key === 'settings'" @connected="refresh" />
+      <IntelligenceView v-else-if="currentRoute.key === 'intelligence'" :demo="demo" @toggle-demo="toggleDemo" />
       <ModuleView v-else :module="currentRoute.key" :data="data" />
     </main>
   </div>
