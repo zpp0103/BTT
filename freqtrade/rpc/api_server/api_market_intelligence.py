@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends
 from freqtrade.rpc.api_server.deps import get_config
 from freqtrade.rpc.api_server.market_intelligence import (
     MarketIntelligenceResponse,
-    build_unconfigured_intelligence,
+    build_market_intelligence,
 )
 
 
@@ -17,4 +17,4 @@ router = APIRouter()
 )
 def market_intelligence(config=Depends(get_config)):
     """Return normalized market intelligence without claiming unavailable providers are live."""
-    return build_unconfigured_intelligence(config)
+    return build_market_intelligence(config)

@@ -24,6 +24,10 @@ const freshnessLabel = computed(() => {
 });
 const sourceTime = (value: string) => new Date(value).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
 const confidence = (value: number | null) => value == null ? "—" : `${Math.round(value * 100)}%`;
+const providerState = (status: "connected" | "unconfigured" | "error", latency: number | null) => {
+  if (status === "connected") return `${latency ?? "—"} ms`;
+  return status === "unconfigured" ? "未配置" : "连接失败";
+};
 const sentimentLabel = { positive: "正向", neutral: "中性", negative: "负向" } as const;
 const impactLabel = { low: "低", medium: "中", high: "高", critical: "极高" } as const;
 const regimeLabel = { risk_on: "风险偏好", neutral: "中性", risk_off: "风险规避", unavailable: "不可用" } as const;
@@ -113,7 +117,7 @@ onBeforeUnmount(() => {
             <li v-for="provider in data.providers" :key="provider.provider_id">
               <i :class="{ ok: provider.status === 'connected' }"></i>
               <div><strong>{{ provider.label }}</strong><span>{{ provider.message }}</span></div>
-              <em>{{ provider.status === "connected" ? `${provider.latency_ms ?? "—"} ms` : "未配置" }}</em>
+              <em>{{ providerState(provider.status, provider.latency_ms) }}</em>
             </li>
           </ul>
         </article>

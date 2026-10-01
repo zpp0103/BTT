@@ -1,7 +1,9 @@
 from datetime import UTC, datetime
+from time import monotonic
 from typing import Literal, Protocol
 
-from pydantic import BaseModel, Field
+import httpx
+from pydantic import BaseModel, Field, ValidationError
 
 
 ProviderStatus = Literal["connected", "unconfigured", "error"]
@@ -12,7 +14,7 @@ DecisionStatus = Literal["approved", "rejected", "unavailable"]
 class IntelligenceProvider(Protocol):
     provider_id: str
 
-    def collect(self) -> list["MarketEvent"]: ...
+    def collect(self) -> tuple[list["MarketEvent"], list["ProviderConnection"]]: ...
 
 
 class ProviderConnection(BaseModel):
@@ -159,7 +161,19 @@ def evaluate_risk_gate(
     )
 
 
+def _execution_decision() -> ExecutionDecision:
+    return ExecutionDecision(
+        mode="observe_only",
+        status="disabled",
+        message=(
+            "第一版仅提供观察与建议；AI 不持有交易所密钥，也不能直接下单。"
+        ),
+    )
+
+
 def build_unconfigured_intelligence(config: dict) -> MarketIntelligenceResponse:
+    from freqtrade.rpc.api_server.market_intelligence_providers import unavailable_opinions
+
     now = datetime.now(UTC)
     intelligence_config = config.get("btt_market_intelligence", {})
     max_age_seconds = int(intelligence_config.get("max_age_seconds", 300))
@@ -172,22 +186,6 @@ def build_unconfigured_intelligence(config: dict) -> MarketIntelligenceResponse:
         intelligence_available=False,
         ai_available=False,
     )
-    unavailable_opinions = [
-        RoundtableOpinion(
-            role_id=role_id,
-            role=role,
-            status="unavailable",
-            thesis="AI 服务未配置，未生成观点。",
-            evidence=[],
-            valid_until=None,
-        )
-        for role_id, role in [
-            ("macro_news", "宏观 / 新闻"),
-            ("technical", "技术面"),
-            ("risk", "风险"),
-            ("execution", "执行"),
-        ]
-    ]
     return MarketIntelligenceResponse(
         snapshot_id=f"unconfigured-{int(now.timestamp())}",
         source_mode="live",
@@ -225,14 +223,153 @@ def build_unconfigured_intelligence(config: dict) -> MarketIntelligenceResponse:
             consensus="AI 服务未配置，无法形成实时共识。",
             disagreements=[],
             suggested_action="observe",
-            opinions=unavailable_opinions,
+            opinions=unavailable_opinions("AI 服务未配置，未生成观点。"),
         ),
         risk_decision=risk_decision,
-        execution=ExecutionDecision(
-            mode="observe_only",
-            status="disabled",
-            message=(
-                "第一版仅提供观察与建议；AI 不持有交易所密钥，也不能直接下单。"
-            ),
+        execution=_execution_decision(),
+    )
+
+
+def build_market_intelligence(config: dict) -> MarketIntelligenceResponse:
+    from freqtrade.rpc.api_server.market_intelligence_providers import (
+        OllamaProvider,
+        OpenAICompatibleProvider,
+        RSSIntelligenceProvider,
+        build_roundtable_prompt,
+        unavailable_opinions,
+        validate_roundtable,
+    )
+
+    now = datetime.now(UTC)
+    intelligence_config = config.get("btt_market_intelligence", {})
+    ai_config = config.get("btt_ai", {})
+    max_age_seconds = int(intelligence_config.get("max_age_seconds", 300))
+    news_provider_name = str(intelligence_config.get("provider", "rss"))
+    if news_provider_name == "rss":
+        events, providers = RSSIntelligenceProvider(intelligence_config).collect()
+    else:
+        events = []
+        providers = [
+            ProviderConnection(
+                provider_id=news_provider_name,
+                label="新闻 / 公告数据源",
+                status="error",
+                message=f"不支持的市场情报 provider：{news_provider_name}",
+            )
+        ]
+
+    snapshot_id = f"live-{int(now.timestamp())}"
+    roundtable: RoundtableResult
+    ai_available = False
+    ai_provider_name = ai_config.get("provider")
+    if not ai_provider_name:
+        providers.append(
+            ProviderConnection(
+                provider_id="ai",
+                label="AI 圆桌服务",
+                status="unconfigured",
+                message="未配置 btt_ai.provider。",
+            )
+        )
+        roundtable = RoundtableResult(
+            status="unavailable",
+            consensus="AI 服务未配置，无法形成实时共识。",
+            disagreements=[],
+            suggested_action="observe",
+            opinions=unavailable_opinions("AI 服务未配置，未生成观点。"),
+        )
+    elif not events:
+        providers.append(
+            ProviderConnection(
+                provider_id=str(ai_provider_name),
+                label="AI 圆桌服务",
+                status="error",
+                message="没有可用的市场事件，未调用 AI。",
+            )
+        )
+        roundtable = RoundtableResult(
+            status="unavailable",
+            consensus="市场情报不可用，未调用 AI 服务。",
+            disagreements=[],
+            suggested_action="observe",
+            opinions=unavailable_opinions("市场情报不可用，未生成观点。"),
+        )
+    else:
+        started = monotonic()
+        try:
+            if ai_provider_name == "ollama":
+                ai_provider = OllamaProvider(ai_config)
+            elif ai_provider_name == "openai_compatible":
+                ai_provider = OpenAICompatibleProvider(ai_config)
+            else:
+                raise ValueError(f"不支持的 AI provider：{ai_provider_name}")
+            prompt = build_roundtable_prompt(snapshot_id, now, events)
+            payload = ai_provider.analyze(prompt)
+            roundtable = validate_roundtable(payload, events)
+            ai_available = True
+            providers.append(
+                ProviderConnection(
+                    provider_id=str(ai_provider_name),
+                    label=f"AI 圆桌 · {ai_config.get('model', '未命名模型')}",
+                    status="connected",
+                    message="模型已基于当前情报快照返回结构化观点。",
+                    last_success_at=datetime.now(UTC),
+                    latency_ms=round((monotonic() - started) * 1000),
+                )
+            )
+        except (
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+            ValidationError,
+        ) as exc:
+            providers.append(
+                ProviderConnection(
+                    provider_id=str(ai_provider_name),
+                    label="AI 圆桌服务",
+                    status="error",
+                    message=f"AI 不可用：{type(exc).__name__}",
+                    latency_ms=round((monotonic() - started) * 1000),
+                )
+            )
+            roundtable = RoundtableResult(
+                status="unavailable",
+                consensus="AI 服务调用或结构化校验失败，未形成共识。",
+                disagreements=[],
+                suggested_action="observe",
+                opinions=unavailable_opinions("AI 服务不可用，未生成观点。"),
+            )
+
+    intelligence_available = bool(events) and any(
+        provider.status == "connected" and provider.provider_id != ai_provider_name
+        for provider in providers
+    )
+    freshness, risk_decision = evaluate_risk_gate(
+        generated_at=now if intelligence_available else None,
+        now=now,
+        max_age_seconds=max_age_seconds,
+        intelligence_available=intelligence_available,
+        ai_available=ai_available,
+    )
+    connected_sources = sum(
+        provider.status == "connected" and provider.provider_id != ai_provider_name
+        for provider in providers
+    )
+    return MarketIntelligenceResponse(
+        snapshot_id=snapshot_id,
+        source_mode="live",
+        generated_at=now,
+        market_summary=(
+            f"已从 {connected_sources} 个公开订阅源规范化 {len(events)} 条事件。"
+            if events
+            else "公开新闻订阅当前不可用，没有可供判断的市场情报快照。"
         ),
+        market_regime="neutral" if events else "unavailable",
+        freshness=freshness,
+        providers=providers,
+        events=events,
+        roundtable=roundtable,
+        risk_decision=risk_decision,
+        execution=_execution_decision(),
     )

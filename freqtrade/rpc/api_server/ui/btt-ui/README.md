@@ -35,9 +35,11 @@ Demo data is opt-in and always marked `DEMO`.
 
 `GET /api/v1/market_intelligence` supplies the normalized news snapshot,
 provider health, AI roundtable result, deterministic risk decision, and
-execution state. No external news or model adapter is bundled, so LIVE mode
-honestly renders providers as unconfigured until server-side adapters are
-installed. DEMO events and opinions are local, simulated, and visibly labelled.
+execution state. LIVE mode uses the bundled public RSS/Atom adapter and reports
+each source failure. AI supports local Ollama or an OpenAI-compatible endpoint;
+it remains visibly unavailable unless a model actually returns valid,
+evidence-linked JSON. DEMO events and opinions are local, simulated, and visibly
+labelled.
 
 ## Authentication
 

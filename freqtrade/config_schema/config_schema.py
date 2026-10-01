@@ -824,14 +824,41 @@ CONF_SCHEMA = {
             "type": "object",
             "properties": {
                 "provider": {
-                    "description": "Provider adapter identifier. No external adapter is bundled.",
+                    "description": "Provider adapter identifier. The bundled provider is rss.",
                     "type": "string",
+                    "enum": ["rss"],
                 },
                 "max_age_seconds": {
                     "description": "Maximum intelligence snapshot age accepted by the risk gate.",
                     "type": "integer",
                     "minimum": 1,
                     "default": 300,
+                },
+                "timeout_seconds": {
+                    "description": "Per-source RSS/Atom HTTP timeout.",
+                    "type": "number",
+                    "minimum": 1,
+                    "default": 8,
+                },
+                "max_events": {
+                    "description": "Maximum normalized events retained in one snapshot.",
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 30,
+                },
+                "sources": {
+                    "description": "Public RSS/Atom sources.",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "label": {"type": "string"},
+                            "url": {"type": "string", "format": "uri"},
+                        },
+                        "required": ["id", "label", "url"],
+                    },
                 },
             },
         },
@@ -840,8 +867,21 @@ CONF_SCHEMA = {
             "type": "object",
             "properties": {
                 "provider": {
-                    "description": "AI provider adapter identifier. No model adapter is bundled.",
+                    "description": "AI provider adapter identifier.",
                     "type": "string",
+                    "enum": ["ollama", "openai_compatible"],
+                },
+                "base_url": {"type": "string", "format": "uri"},
+                "model": {"type": "string"},
+                "api_key_env": {
+                    "description": "Environment variable containing the provider API key.",
+                    "type": "string",
+                    "default": "BTT_AI_API_KEY",
+                },
+                "timeout_seconds": {
+                    "type": "number",
+                    "minimum": 1,
+                    "default": 90,
                 },
             },
         },

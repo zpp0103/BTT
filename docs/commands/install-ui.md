@@ -45,32 +45,48 @@ session.
 ### Market intelligence and AI roundtable
 
 The **Market intelligence** page reads the authenticated
-`GET /api/v1/market_intelligence` contract. The bundled backend intentionally
-ships without an external news feed or AI model adapter. In LIVE mode the API
-therefore returns `unconfigured` provider states, no events, and a rejected
-risk decision instead of presenting demo content as real data.
+`GET /api/v1/market_intelligence` contract. The bundled `rss` provider reads
+public RSS/Atom feeds with an explicit timeout and User-Agent, normalizes event
+timestamps and sources, removes duplicate headlines, and tolerates individual
+feed failures. External content is untrusted data and is never treated as
+instructions.
 
 The configuration points are:
 
 ``` json
 {
   "btt_market_intelligence": {
-    "provider": "your-news-adapter",
+    "provider": "rss",
+    "timeout_seconds": 8,
+    "max_events": 30,
     "max_age_seconds": 300
   },
   "btt_ai": {
-    "provider": "your-model-adapter"
+    "provider": "ollama",
+    "base_url": "http://127.0.0.1:11434",
+    "model": "qwen2.5:1.5b",
+    "timeout_seconds": 90
   }
 }
 ```
 
-Provider names alone do not enable a connection. An adapter implementing the
-`IntelligenceProvider` protocol must normalize source events into the API
-contract, preserve source and publication timestamps, and report connection
-errors explicitly. Model adapters must produce role opinions from one immutable
-snapshot and include evidence references, confidence, and validity time.
-Provider credentials belong in server-side secrets or environment-backed
-configuration and must never be sent to the browser or an LLM prompt.
+Custom RSS sources can be configured as `{id, label, url}` objects in
+`btt_market_intelligence.sources`. Use only feeds whose terms permit automated
+subscription. The default sources are the Ethereum Foundation Blog, CoinDesk
+RSS, and Cointelegraph RSS; each source reports its own connected/error state.
+
+AI adapters support local Ollama and OpenAI-compatible chat-completions:
+
+- `ollama` defaults to `http://127.0.0.1:11434` and requires a local model.
+- `openai_compatible` accepts `base_url`, `model`, and `api_key_env`. The key is
+  read only from the named server-side environment variable (default
+  `BTT_AI_API_KEY`); it is never returned by the API or sent to the browser.
+
+Both adapters submit the same immutable, timestamped snapshot to all four roles.
+News fields are length/quantity limited, prompts declare them untrusted, and
+responses must pass strict Pydantic validation, contain all four required roles,
+and cite only supplied event IDs. Timeout, HTTP, JSON, schema, or citation errors
+make AI explicitly unavailable; there is no synthetic fallback.
 
 The first version is always **observe only**:
 
@@ -82,7 +98,44 @@ The first version is always **observe only**:
 4. The executor remains disabled. AI services never receive exchange keys and
    cannot bypass a risk veto.
 
-DEMO mode uses clearly labelled local events and simulated opinions only. A
-future live integration must add provider adapters and tests without changing
-these safety boundaries; connecting a model must not directly enable order
-execution.
+DEMO mode uses clearly labelled local events and simulated opinions only.
+Additional live providers must preserve these contracts and safety boundaries;
+connecting a model must not directly enable order execution.
+
+### Local ports and startup
+
+All defaults bind only to loopback:
+
+| Service | Address | Purpose |
+| --- | --- | --- |
+| Freqtrade + BTT UI | `127.0.0.1:8080` | Same-origin production API and UI |
+| Vite | `127.0.0.1:5173` | Frontend development server |
+| Ollama | `127.0.0.1:11434` | Local OpenAI-free model runtime |
+
+Set up a project-local Python 3.11 environment, install dependencies, and run
+the diagnostics:
+
+``` bash
+uv python install 3.11
+uv venv --python 3.11
+uv pip install --python .venv/bin/python -e '.[develop]'
+.venv/bin/python scripts/btt-local.py check
+```
+
+Copy `.env.example` values into your shell or an untracked `.env` if ports or
+model settings need to change. Generate a random local API password and JWT
+secret, then start webserver mode:
+
+``` bash
+.venv/bin/python scripts/btt-local.py generate-config
+.venv/bin/python scripts/btt-local.py start
+```
+
+The generated config and credentials are under ignored `user_data/`, mode 0600.
+The script refuses to replace an occupied port and never kills another process.
+For frontend development use:
+
+``` bash
+cd freqtrade/rpc/api_server/ui/btt-ui
+npm run dev -- --host 127.0.0.1 --port 5173
+```

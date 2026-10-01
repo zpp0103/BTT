@@ -206,8 +206,14 @@ def test_api_ui_version(botclient, mocker):
     assert rc.json()["version"] == "0.1.2"
 
 
-def test_api_market_intelligence_unconfigured(botclient):
+def test_api_market_intelligence_unconfigured(botclient, mocker):
     _ftbot, client = botclient
+    from freqtrade.rpc.api_server.market_intelligence import build_unconfigured_intelligence
+
+    mocker.patch(
+        "freqtrade.rpc.api_server.api_market_intelligence.build_market_intelligence",
+        return_value=build_unconfigured_intelligence({}),
+    )
 
     rc = client_get(client, f"{BASE_URI}/market_intelligence")
     assert_response(rc)
