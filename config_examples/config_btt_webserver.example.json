@@ -1,0 +1,34 @@
+{
+    "dry_run": true,
+    "exchange": {
+        "name": "binance",
+        "key": "",
+        "secret": "",
+        "pair_whitelist": ["BTC/USDT"],
+        "pair_blacklist": []
+    },
+    "dataformat_ohlcv": "feather",
+    "dataformat_trades": "feather",
+    "api_server": {
+        "enabled": true,
+        "listen_ip_address": "127.0.0.1",
+        "listen_port": 8080,
+        "verbosity": "error",
+        "CORS_origins": ["http://127.0.0.1:5173"],
+        "username": "generated-locally",
+        "password": "generated-locally",
+        "jwt_secret_key": "generated-locally-at-least-32-characters"
+    },
+    "btt_market_intelligence": {
+        "provider": "rss",
+        "timeout_seconds": 8,
+        "max_events": 30,
+        "max_age_seconds": 300
+    },
+    "btt_ai": {
+        "provider": "ollama",
+        "base_url": "http://127.0.0.1:11434",
+        "model": "qwen2.5:1.5b",
+        "timeout_seconds": 300
+    }
+}

@@ -205,6 +205,9 @@ class ApiServer(RPCHandler):
         from freqtrade.rpc.api_server.api_background_tasks import router as api_bg_tasks
         from freqtrade.rpc.api_server.api_backtest import router as api_backtest
         from freqtrade.rpc.api_server.api_download_data import router as api_download_data
+        from freqtrade.rpc.api_server.api_market_intelligence import (
+            router as api_market_intelligence,
+        )
         from freqtrade.rpc.api_server.api_pair_history import router as api_pair_history
         from freqtrade.rpc.api_server.api_pairlists import router as api_pairlists
         from freqtrade.rpc.api_server.api_trading import router as api_trading
@@ -220,6 +223,11 @@ class ApiServer(RPCHandler):
         app.include_router(router_login, prefix="/api/v1", tags=["Auth"])
         app.include_router(
             api_v1,
+            prefix="/api/v1",
+            dependencies=[Depends(http_basic_or_jwt_token)],
+        )
+        app.include_router(
+            api_market_intelligence,
             prefix="/api/v1",
             dependencies=[Depends(http_basic_or_jwt_token)],
         )
