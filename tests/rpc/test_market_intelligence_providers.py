@@ -102,9 +102,7 @@ def test_roundtable_rejects_unknown_evidence():
             "status": "ready",
             "thesis": "Observe",
             "confidence": 0.5,
-            "evidence": [
-                {"event_id": "invented", "source": "fake", "headline": "fake"}
-            ],
+            "evidence": [{"event_id": "invented", "source": "fake", "headline": "fake"}],
             "valid_until": datetime.now(UTC).isoformat(),
             "simulated": False,
         }
@@ -137,16 +135,19 @@ def test_ollama_provider_returns_strict_json(monkeypatch):
         )
 
     monkeypatch.setattr(providers.httpx, "post", fake_post)
-    result = OllamaProvider(
-        {"base_url": "http://127.0.0.1:11434", "model": "test"}
-    ).analyze("safe prompt")
+    result = OllamaProvider({"base_url": "http://127.0.0.1:11434", "model": "test"}).analyze(
+        "safe prompt"
+    )
 
     assert result == expected
     opinions = captured["format"]["properties"]["opinions"]
     assert opinions["minItems"] == opinions["maxItems"] == 4
-    assert [
-        item["properties"]["role_id"]["const"] for item in opinions["prefixItems"]
-    ] == ["macro_news", "technical", "risk", "execution"]
+    assert [item["properties"]["role_id"]["const"] for item in opinions["prefixItems"]] == [
+        "macro_news",
+        "technical",
+        "risk",
+        "execution",
+    ]
 
 
 def test_openai_provider_requires_server_side_key(monkeypatch):

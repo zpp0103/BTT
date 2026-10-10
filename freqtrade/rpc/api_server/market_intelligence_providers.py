@@ -5,7 +5,7 @@ import os
 import re
 from datetime import UTC, datetime
 from time import monotonic
-from typing import Any
+from typing import Any, Literal
 from xml.etree.ElementTree import Element
 
 import httpx
@@ -85,7 +85,7 @@ def _classify_symbols(text: str) -> list[str]:
     ]
 
 
-def _classify_sentiment(text: str) -> str:
+def _classify_sentiment(text: str) -> Literal["positive", "neutral", "negative"]:
     normalized = text.lower()
     positive = sum(term in normalized for term in POSITIVE_TERMS)
     negative = sum(term in normalized for term in NEGATIVE_TERMS)
@@ -96,7 +96,7 @@ def _classify_sentiment(text: str) -> str:
     return "neutral"
 
 
-def _classify_impact(text: str) -> str:
+def _classify_impact(text: str) -> Literal["low", "medium", "high", "critical"]:
     normalized = text.lower()
     matches = sum(term in normalized for term in HIGH_IMPACT_TERMS)
     return "high" if matches >= 2 else "medium" if matches == 1 else "low"
@@ -138,10 +138,7 @@ def parse_feed(
         event_id = identifier or f"{source_id}-{index}-{title}"
         events.append(
             MarketEvent(
-                event_id=(
-                    f"{source_id}:"
-                    f"{hashlib.sha256(event_id.encode()).hexdigest()[:16]}"
-                ),
+                event_id=(f"{source_id}:{hashlib.sha256(event_id.encode()).hexdigest()[:16]}"),
                 headline=title,
                 summary=summary,
                 source=source_label,
@@ -212,7 +209,7 @@ class RSSIntelligenceProvider:
                             provider_id=source_id,
                             label=label,
                             status="error",
-                            message=f"订阅读取失败：{type(exc).__name__}",
+                            message=f"订阅读取失败：{type(exc).__name__}",  # noqa: RUF001
                             latency_ms=round((monotonic() - started) * 1000),
                         )
                     )
@@ -308,9 +305,7 @@ def _ollama_roundtable_schema() -> dict[str, Any]:
             "status": {"const": "ready"},
             "consensus": {"type": "string", "minLength": 10},
             "disagreements": {"type": "array", "items": {"type": "string"}},
-            "suggested_action": {
-                "enum": ["observe", "hold", "reduce", "enter", "exit"]
-            },
+            "suggested_action": {"enum": ["observe", "hold", "reduce", "enter", "exit"]},
             "opinions": {
                 "type": "array",
                 "prefixItems": [

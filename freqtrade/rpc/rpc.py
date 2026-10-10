@@ -1469,6 +1469,7 @@ class RPC:
             }
 
         configured_limit = self._freqtrade.config.get("max_open_trades")
+        capacity: dict[str, str | int | float | None]
         if configured_limit == float("inf"):
             capacity = {
                 "used": len(open_trades),
@@ -2260,7 +2261,7 @@ class RPC:
                         continue
 
                     candle_time = window["date"].iloc[-1] if "date" in window.columns else None
-                    if hasattr(candle_time, "to_pydatetime"):
+                    if candle_time is not None and hasattr(candle_time, "to_pydatetime"):
                         candle_time = candle_time.to_pydatetime()
                     event_time = candle_time or last_analyzed
                     if not isinstance(event_time, datetime):

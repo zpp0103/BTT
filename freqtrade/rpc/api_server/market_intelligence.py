@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from time import monotonic
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 import httpx
 from pydantic import BaseModel, Field, ValidationError
@@ -15,6 +15,10 @@ class IntelligenceProvider(Protocol):
     provider_id: str
 
     def collect(self) -> tuple[list["MarketEvent"], list["ProviderConnection"]]: ...
+
+
+class AnalysisProvider(Protocol):
+    def analyze(self, prompt: str) -> dict[str, Any]: ...
 
 
 class ProviderConnection(BaseModel):
@@ -165,9 +169,7 @@ def _execution_decision() -> ExecutionDecision:
     return ExecutionDecision(
         mode="observe_only",
         status="disabled",
-        message=(
-            "第一版仅提供观察与建议；AI 不持有交易所密钥，也不能直接下单。"
-        ),
+        message="第一版仅提供观察与建议；AI 不持有交易所密钥，也不能直接下单。",  # noqa: RUF001
     )
 
 
@@ -190,9 +192,7 @@ def build_unconfigured_intelligence(config: dict) -> MarketIntelligenceResponse:
         snapshot_id=f"unconfigured-{int(now.timestamp())}",
         source_mode="live",
         generated_at=now,
-        market_summary=(
-            "实时新闻数据源未配置，当前没有可供判断的市场情报快照。"
-        ),
+        market_summary="实时新闻数据源未配置，当前没有可供判断的市场情报快照。",  # noqa: RUF001
         market_regime="unavailable",
         freshness=freshness,
         providers=[
@@ -220,10 +220,10 @@ def build_unconfigured_intelligence(config: dict) -> MarketIntelligenceResponse:
         events=[],
         roundtable=RoundtableResult(
             status="unavailable",
-            consensus="AI 服务未配置，无法形成实时共识。",
+            consensus="AI 服务未配置，无法形成实时共识。",  # noqa: RUF001
             disagreements=[],
             suggested_action="observe",
-            opinions=unavailable_opinions("AI 服务未配置，未生成观点。"),
+            opinions=unavailable_opinions("AI 服务未配置，未生成观点。"),  # noqa: RUF001
         ),
         risk_decision=risk_decision,
         execution=_execution_decision(),
@@ -254,7 +254,7 @@ def build_market_intelligence(config: dict) -> MarketIntelligenceResponse:
                 provider_id=news_provider_name,
                 label="新闻 / 公告数据源",
                 status="error",
-                message=f"不支持的市场情报 provider：{news_provider_name}",
+                message=f"不支持的市场情报 provider：{news_provider_name}",  # noqa: RUF001
             )
         ]
 
@@ -273,10 +273,10 @@ def build_market_intelligence(config: dict) -> MarketIntelligenceResponse:
         )
         roundtable = RoundtableResult(
             status="unavailable",
-            consensus="AI 服务未配置，无法形成实时共识。",
+            consensus="AI 服务未配置，无法形成实时共识。",  # noqa: RUF001
             disagreements=[],
             suggested_action="observe",
-            opinions=unavailable_opinions("AI 服务未配置，未生成观点。"),
+            opinions=unavailable_opinions("AI 服务未配置，未生成观点。"),  # noqa: RUF001
         )
     elif not events:
         providers.append(
@@ -284,25 +284,26 @@ def build_market_intelligence(config: dict) -> MarketIntelligenceResponse:
                 provider_id=str(ai_provider_name),
                 label="AI 圆桌服务",
                 status="error",
-                message="没有可用的市场事件，未调用 AI。",
+                message="没有可用的市场事件，未调用 AI。",  # noqa: RUF001
             )
         )
         roundtable = RoundtableResult(
             status="unavailable",
-            consensus="市场情报不可用，未调用 AI 服务。",
+            consensus="市场情报不可用，未调用 AI 服务。",  # noqa: RUF001
             disagreements=[],
             suggested_action="observe",
-            opinions=unavailable_opinions("市场情报不可用，未生成观点。"),
+            opinions=unavailable_opinions("市场情报不可用，未生成观点。"),  # noqa: RUF001
         )
     else:
         started = monotonic()
         try:
+            ai_provider: AnalysisProvider
             if ai_provider_name == "ollama":
                 ai_provider = OllamaProvider(ai_config)
             elif ai_provider_name == "openai_compatible":
                 ai_provider = OpenAICompatibleProvider(ai_config)
             else:
-                raise ValueError(f"不支持的 AI provider：{ai_provider_name}")
+                raise ValueError(f"不支持的 AI provider：{ai_provider_name}")  # noqa: RUF001
             prompt = build_roundtable_prompt(snapshot_id, now, events)
             payload = ai_provider.analyze(prompt)
             roundtable = validate_roundtable(payload, events)
@@ -329,16 +330,16 @@ def build_market_intelligence(config: dict) -> MarketIntelligenceResponse:
                     provider_id=str(ai_provider_name),
                     label="AI 圆桌服务",
                     status="error",
-                    message=f"AI 不可用：{type(exc).__name__}",
+                    message=f"AI 不可用：{type(exc).__name__}",  # noqa: RUF001
                     latency_ms=round((monotonic() - started) * 1000),
                 )
             )
             roundtable = RoundtableResult(
                 status="unavailable",
-                consensus="AI 服务调用或结构化校验失败，未形成共识。",
+                consensus="AI 服务调用或结构化校验失败，未形成共识。",  # noqa: RUF001
                 disagreements=[],
                 suggested_action="observe",
-                opinions=unavailable_opinions("AI 服务不可用，未生成观点。"),
+                opinions=unavailable_opinions("AI 服务不可用，未生成观点。"),  # noqa: RUF001
             )
 
     intelligence_available = bool(events) and any(
@@ -363,7 +364,7 @@ def build_market_intelligence(config: dict) -> MarketIntelligenceResponse:
         market_summary=(
             f"已从 {connected_sources} 个公开订阅源规范化 {len(events)} 条事件。"
             if events
-            else "公开新闻订阅当前不可用，没有可供判断的市场情报快照。"
+            else "公开新闻订阅当前不可用，没有可供判断的市场情报快照。"  # noqa: RUF001
         ),
         market_regime="neutral" if events else "unavailable",
         freshness=freshness,

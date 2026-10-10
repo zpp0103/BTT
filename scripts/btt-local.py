@@ -8,7 +8,9 @@ import socket
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 from urllib.error import URLError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 
@@ -37,11 +39,21 @@ def port_open(port: int) -> bool:
 
 def http_status(url: str, headers: dict[str, str] | None = None) -> tuple[bool, str]:
     try:
-        request = Request(url, headers=headers or {"User-Agent": "BTT-Local-Diagnostics/0.1"})
-        with urlopen(request, timeout=3) as response:
+        if urlsplit(url).scheme not in {"http", "https"}:
+            raise ValueError("Only HTTP(S) diagnostic URLs are supported")
+        request = Request(  # noqa: S310 - URL scheme validated above.
+            url, headers=headers or {"User-Agent": "BTT-Local-Diagnostics/0.1"}
+        )
+        with _open_http(request, timeout=3) as response:
             return True, f"HTTP {response.status}"
-    except (URLError, TimeoutError, OSError) as exc:
+    except (URLError, TimeoutError, OSError, ValueError) as exc:
         return False, type(exc).__name__
+
+
+def _open_http(request: Request, *, timeout: int) -> Any:
+    if urlsplit(request.full_url).scheme not in {"http", "https"}:
+        raise ValueError("Only HTTP(S) requests are supported")
+    return urlopen(request, timeout=timeout)  # noqa: S310 - URL scheme validated above.
 
 
 def provider_status(username: str, password: str) -> str:
@@ -52,17 +64,16 @@ def provider_status(username: str, password: str) -> str:
             method="POST",
             headers={"Authorization": f"Basic {credentials}", "Content-Length": "0"},
         )
-        with urlopen(login, timeout=5) as response:
+        with _open_http(login, timeout=5) as response:
             access_token = json.load(response)["access_token"]
         request = Request(
             f"http://{HOST}:{API_PORT}/api/v1/market_intelligence",
             headers={"Authorization": f"Bearer {access_token}"},
         )
-        with urlopen(request, timeout=120) as response:
+        with _open_http(request, timeout=120) as response:
             payload = json.load(response)
         statuses = ", ".join(
-            f"{provider['provider_id']}={provider['status']}"
-            for provider in payload["providers"]
+            f"{provider['provider_id']}={provider['status']}" for provider in payload["providers"]
         )
         return f"source={payload['source_mode']} events={len(payload['events'])} {statuses}"
     except (URLError, TimeoutError, OSError, KeyError, ValueError) as exc:
@@ -105,18 +116,14 @@ def generate_config() -> tuple[str, str]:
         },
         "btt_ai": {
             "provider": os.environ.get("BTT_AI_PROVIDER", "ollama"),
-            "base_url": os.environ.get(
-                "BTT_AI_BASE_URL", f"http://{HOST}:{OLLAMA_PORT}"
-            ),
+            "base_url": os.environ.get("BTT_AI_BASE_URL", f"http://{HOST}:{OLLAMA_PORT}"),
             "model": os.environ.get("BTT_AI_MODEL", "qwen2.5:1.5b"),
             "api_key_env": "BTT_AI_API_KEY",
             "timeout_seconds": 300,
         },
     }
     LOCAL_CONFIG.write_text(json.dumps(payload, indent=2) + "\n")
-    LOCAL_INFO.write_text(
-        f"BTT_API_USERNAME={username}\nBTT_API_PASSWORD={password}\n"
-    )
+    LOCAL_INFO.write_text(f"BTT_API_USERNAME={username}\nBTT_API_PASSWORD={password}\n")
     LOCAL_CONFIG.chmod(0o600)
     LOCAL_INFO.chmod(0o600)
     return username, password
