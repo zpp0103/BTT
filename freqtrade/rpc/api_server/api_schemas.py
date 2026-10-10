@@ -428,6 +428,278 @@ class Locks(BaseModel):
     locks: list[LockModel]
 
 
+class ReadOnlyMetric(BaseModel):
+    value: float | int | None = None
+    status: Literal["available", "partial", "unavailable", "unconfigured"]
+    source: str
+    reason: str | None = None
+
+
+class PositionCapacityMetric(BaseModel):
+    used: int
+    limit: int | None = None
+    utilization_pct: float | None = None
+    status: Literal["available", "partial", "unavailable"]
+    source: str
+    reason: str | None = None
+
+
+class ReadOnlyCapability(BaseModel):
+    status: Literal["available", "partial", "unavailable", "unconfigured"]
+    source: str
+    reason: str | None = None
+
+
+class EffectiveRiskSnapshot(BaseModel):
+    generated_timestamp: int
+    event_timestamp: int | None = None
+    status: Literal["available", "partial", "unavailable"]
+    current_drawdown: ReadOnlyMetric
+    max_drawdown: ReadOnlyMetric
+    max_drawdown_abs: ReadOnlyMetric
+    position_capacity: PositionCapacityMetric
+    nominal_exposure: ReadOnlyMetric
+    today_realized_profit: ReadOnlyMetric
+    consecutive_losses: ReadOnlyMetric
+    active_locks: list[LockModel]
+    locks_status: ReadOnlyCapability
+    risk_limit: ReadOnlyCapability
+
+
+class DecisionJournalEvent(BaseModel):
+    id: str
+    event_timestamp: int
+    strategy: str
+    pair: str
+    side: Literal["long", "short"]
+    stage: Literal["entry", "position", "exit"]
+    result: str
+    enter_tag: str | None = None
+    signal_source: str | None = None
+    decision_reason: str | None = None
+    rejection_reason: str | None = None
+    trade_id: int
+    order_id: str | None = None
+    order_status: str | None = None
+    order_side: str | None = None
+    open_rate: float
+    close_rate: float | None = None
+    profit_ratio: float | None = None
+    profit_abs: float | None = None
+    source: Literal["trade_persistence"]
+
+
+class DecisionJournal(BaseModel):
+    generated_timestamp: int
+    events: list[DecisionJournalEvent]
+    offset: int
+    count: int
+    capabilities: dict[str, ReadOnlyCapability]
+
+
+MarketObserverTimeframe = Annotated[str, Field(pattern=r"^[1-9]\d*[mhdwM]$")]
+
+
+class MarketPairObservation(BaseModel):
+    pair: str
+    timeframe: str
+    status: Literal["available", "unavailable"]
+    freshness: Literal["fresh", "stale", "unavailable"]
+    event_timestamp: int | None = None
+    sample_count: int
+    close: float | None = None
+    change_pct: float | None = None
+    range_pct: float | None = None
+    volume: float | None = None
+    volume_ratio: float | None = None
+    source: str
+    reason: str | None = None
+
+
+class MarketBreadth(BaseModel):
+    observed: int
+    advancing: int
+    declining: int
+    unchanged: int
+    unavailable: int
+
+
+class MarketTimeframeSummary(BaseModel):
+    timeframe: str
+    requested_pairs: int
+    available: int
+    fresh: int
+    stale: int
+    unavailable: int
+    coverage_pct: float
+    breadth: MarketBreadth
+
+
+class MarketObserverHealth(BaseModel):
+    requested_timestamp: int
+    generated_timestamp: int
+    generation_duration_ms: int
+    requested_observations: int
+    available: int
+    fresh: int
+    stale: int
+    unavailable: int
+    coverage_pct: float
+
+
+class MarketObserverSnapshot(BaseModel):
+    mode: Literal["observe_only"]
+    affects_trading: Literal[False]
+    generated_timestamp: int
+    event_timestamp: int | None = None
+    status: Literal["available", "partial", "unavailable"]
+    timeframe: str
+    lookback_candles: int
+    pairs: list[MarketPairObservation]
+    breadth: MarketBreadth
+    timeframes: list[MarketTimeframeSummary]
+    health: MarketObserverHealth
+    capabilities: dict[str, ReadOnlyCapability]
+
+
+class ExecutionFeeTotal(BaseModel):
+    currency: str
+    value: float
+    source: str
+
+
+class OrderLifecycleSummary(BaseModel):
+    total: int
+    open: int
+    filled: int
+    cancelled: int
+    other: int
+
+
+class ExecutionQualitySample(BaseModel):
+    id: str
+    event_timestamp: int
+    trade_id: int
+    order_id: str | None = None
+    pair: str
+    side: str
+    lifecycle: Literal["open", "filled", "cancelled", "other"]
+    created_timestamp: int | None = None
+    filled_timestamp: int | None = None
+    fill_latency_ms: int | None = None
+    requested_price: float | None = None
+    average_price: float | None = None
+    price_deviation_bps: float | None = None
+    source: Literal["order_persistence"]
+
+
+class ExecutionQualityCoverage(BaseModel):
+    sampled_trades: int
+    sampled_orders: int
+    fee_records: int
+    latency_records: int
+    price_deviation_records: int
+
+
+class ExecutionQualitySnapshot(BaseModel):
+    mode: Literal["read_only"]
+    affects_trading: Literal[False]
+    generated_timestamp: int
+    event_timestamp: int | None = None
+    status: Literal["available", "partial", "unavailable"]
+    fee_totals: list[ExecutionFeeTotal]
+    fee_status: ReadOnlyCapability
+    average_fill_latency_ms: ReadOnlyMetric
+    p95_fill_latency_ms: ReadOnlyMetric
+    average_price_deviation_bps: ReadOnlyMetric
+    lifecycle: OrderLifecycleSummary
+    coverage: ExecutionQualityCoverage
+    recent_orders: list[ExecutionQualitySample]
+    capabilities: dict[str, ReadOnlyCapability]
+
+
+class StrategyGovernanceIdentity(BaseModel):
+    identifier: str
+    class_name: str
+    version: str | None = None
+    fingerprint: str | None = None
+    fingerprint_algorithm: Literal["sha256"] | None = None
+    fingerprint_status: ReadOnlyCapability
+
+
+class StrategyBacktestEvidence(BaseModel):
+    status: Literal["available", "partial", "unavailable", "not_recorded"]
+    source: str
+    reason: str | None = None
+    result_file: str | None = None
+    run_id: str | None = None
+    run_timestamp: int | None = None
+    sample_start_timestamp: int | None = None
+    sample_end_timestamp: int | None = None
+    timeframe: str | None = None
+    trade_count: ReadOnlyMetric
+    profit_ratio: ReadOnlyMetric
+    max_drawdown: ReadOnlyMetric
+    win_rate: ReadOnlyMetric
+
+
+class StrategyGovernanceGate(BaseModel):
+    id: Literal[
+        "backtest",
+        "out_of_sample",
+        "stress_test",
+        "paper_trading",
+        "limited_capital",
+        "human_approval",
+        "rollback_point",
+    ]
+    label: str
+    status: Literal["available", "partial", "unavailable", "not_recorded"]
+    source: str
+    reason: str | None = None
+
+
+class StrategyGovernanceSnapshot(BaseModel):
+    mode: Literal["read_only"]
+    affects_trading: Literal[False]
+    promotion_allowed: Literal[False]
+    generated_timestamp: int
+    status: Literal["available", "partial", "unavailable"]
+    strategy: StrategyGovernanceIdentity
+    latest_backtest: StrategyBacktestEvidence
+    gates: list[StrategyGovernanceGate]
+    capabilities: dict[str, ReadOnlyCapability]
+
+
+class SystemObservabilityAlert(BaseModel):
+    id: str
+    severity: Literal["warning", "error"]
+    title: str
+    count: int
+    event_timestamp: int | None = None
+    source: str
+
+
+class SystemObservabilitySnapshot(BaseModel):
+    mode: Literal["read_only"]
+    affects_trading: Literal[False]
+    generated_timestamp: int
+    status: Literal["available", "partial", "unavailable"]
+    runtime_state: str
+    heartbeat_age_ms: ReadOnlyMetric
+    uptime_ms: ReadOnlyMetric
+    database_status: ReadOnlyCapability
+    open_trade_count: ReadOnlyMetric
+    active_lock_count: ReadOnlyMetric
+    active_pair_count: ReadOnlyMetric
+    cpu_pct: ReadOnlyMetric
+    ram_pct: ReadOnlyMetric
+    log_window: dict[str, int | None]
+    log_levels: dict[str, int]
+    alerts: list[SystemObservabilityAlert]
+    capabilities: dict[str, ReadOnlyCapability]
+
+
 class LocksPayload(BaseModel):
     pair: str
     side: str = "*"  # Default to both sides

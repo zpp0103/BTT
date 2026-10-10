@@ -26,6 +26,17 @@ const state = ref<LoadState>("idle");
 const demo = ref(sessionStorage.getItem("btt-demo-mode") === "true");
 const menuOpen = ref(false);
 let refreshTimer: number | undefined;
+const coreEndpoints = new Set([
+  "API",
+  "运行配置",
+  "账户余额",
+  "收益统计",
+  "当前持仓",
+  "历史成交",
+  "权益历史",
+  "机器人健康",
+  "系统资源",
+]);
 
 function normalizePath(path: string): string {
   const normalized = `/${path.split("/").filter(Boolean).join("/")}`;
@@ -42,7 +53,8 @@ async function refresh() {
   state.value = "loading";
   try {
     data.value = await loadDashboard(demo.value);
-    state.value = data.value.errors.length >= 9 ? "error" : "ready";
+    const coreFailures = data.value.errors.filter((error) => coreEndpoints.has(error.endpoint));
+    state.value = coreFailures.length === coreEndpoints.size ? "error" : "ready";
   } catch {
     state.value = "error";
   }

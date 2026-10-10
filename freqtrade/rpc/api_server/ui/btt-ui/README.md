@@ -52,3 +52,27 @@ AI output is advisory only. Every proposal is evaluated by an independent,
 deterministic risk gate, stale data is vetoed, and the first release keeps the
 executor in `observe_only` mode. Exchange credentials are never exposed to AI
 providers.
+
+## Institutional read-only surfaces
+
+The dashboard also consumes authenticated, trading-mode API 2.55 contracts:
+
+- `/effective_risk` and `/decision_journal` expose bounded persisted risk and
+  decision evidence. Missing limits remain `unconfigured`; missing facts remain
+  `null`/`unavailable`, not zero.
+- `/market_observer` reads cached analyzed OHLCV across bounded pairs,
+  timeframes, and candles. It is `observe_only`, reports freshness and coverage,
+  does not download exchange data, and is not consumed by live strategies.
+- `/execution_quality` derives bounded fee, lifecycle, latency, and price
+  deviation coverage from persisted trades/orders. It is `read_only`.
+- `/strategy_governance` fingerprints the active strategy and reads only the
+  bounded latest backtest artifact. `promotion_allowed` is always `false`; no
+  strategy is approved, published, or switched.
+- `/system_observability` reports aggregate runtime/database/resource health and
+  log-level counts. Raw log messages, stack traces, configuration, and source
+  paths are deliberately excluded.
+
+All five surfaces declare `affects_trading: false` (or the equivalent risk
+capability boundary), add no database migration or trading-path write, and use
+the existing Basic/JWT plus trading-mode guards. The client distinguishes
+server-native facts from client-derived compatibility fallbacks.

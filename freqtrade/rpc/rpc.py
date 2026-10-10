@@ -2,11 +2,17 @@
 This module contains class to define a RPC communications
 """
 
+import hashlib
+import inspect
+import json
 import logging
 from abc import abstractmethod
 from collections.abc import Generator, Sequence
 from datetime import UTC, date, datetime, timedelta
+from math import ceil, isfinite
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from zipfile import BadZipFile, ZipFile
 
 import psutil
 from dateutil.relativedelta import relativedelta
@@ -14,6 +20,7 @@ from dateutil.tz import tzlocal
 from numpy import inf, isnan, mean, nan
 from pandas import DataFrame, NaT, read_sql
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 
 from freqtrade import __version__
 from freqtrade.configuration.timerange import TimeRange
@@ -38,11 +45,12 @@ from freqtrade.enums import (
     State,
     TradingMode,
 )
-from freqtrade.exceptions import ExchangeError, PricingError
+from freqtrade.exceptions import ExchangeError, OperationalException, PricingError
 from freqtrade.exchange import Exchange, timeframe_to_minutes, timeframe_to_msecs
 from freqtrade.exchange.exchange_utils import price_to_precision
 from freqtrade.ft_types import AnnotationType
 from freqtrade.loggers import bufferHandler
+from freqtrade.misc import is_file_in_dir
 from freqtrade.persistence import CustomDataWrapper, KeyValueStore, Order, PairLocks, Trade
 from freqtrade.persistence.models import PairLock, custom_data_rpc_wrapper
 from freqtrade.plugins.pairlist.pairlist_helpers import expand_pairlist
@@ -1406,6 +1414,1011 @@ class RPC:
                 else -1
             ),
             "total_stake": sum((trade.open_rate * trade.amount) for trade in trades),
+        }
+
+    def _rpc_effective_risk_snapshot(
+        self, stake_currency: str, fiat_display_currency: str
+    ) -> dict[str, Any]:
+        """Build a read-only risk snapshot from persisted trades, locks, and existing statistics."""
+        generated_timestamp = dt_ts(dt_now())
+        open_trades = Trade.get_open_trades()
+        active_locks = [lock.to_json() for lock in PairLocks.get_pair_locks(None)]
+        event_timestamps: list[int] = [
+            int(trade.open_date_utc.timestamp() * 1000) for trade in open_trades
+        ]
+        event_timestamps.extend(lock["lock_timestamp"] for lock in active_locks)
+
+        try:
+            stats = self._rpc_trade_statistics(stake_currency, fiat_display_currency)
+            current_drawdown = {
+                "value": stats["current_drawdown"],
+                "status": "available",
+                "source": "trade_statistics.current_drawdown",
+            }
+            max_drawdown = {
+                "value": stats["max_drawdown"],
+                "status": "available",
+                "source": "trade_statistics.max_drawdown",
+            }
+            max_drawdown_abs = {
+                "value": stats["max_drawdown_abs"],
+                "status": "available",
+                "source": "trade_statistics.max_drawdown_abs",
+            }
+            if stats["latest_trade_timestamp"]:
+                event_timestamps.append(stats["latest_trade_timestamp"])
+        except (RPCException, ValueError):
+            logger.warning("Unable to calculate trade statistics for effective risk snapshot")
+            current_drawdown = {
+                "value": None,
+                "status": "unavailable",
+                "source": "trade_statistics.current_drawdown",
+                "reason": "trade statistics unavailable",
+            }
+            max_drawdown = {
+                "value": None,
+                "status": "unavailable",
+                "source": "trade_statistics.max_drawdown",
+                "reason": "trade statistics unavailable",
+            }
+            max_drawdown_abs = {
+                "value": None,
+                "status": "unavailable",
+                "source": "trade_statistics.max_drawdown_abs",
+                "reason": "trade statistics unavailable",
+            }
+
+        configured_limit = self._freqtrade.config.get("max_open_trades")
+        if configured_limit == float("inf"):
+            capacity = {
+                "used": len(open_trades),
+                "limit": None,
+                "utilization_pct": None,
+                "status": "available",
+                "source": "config.max_open_trades + trade_persistence",
+                "reason": "unbounded position capacity",
+            }
+        elif isinstance(configured_limit, (int, float)) and configured_limit > 0:
+            capacity = {
+                "used": len(open_trades),
+                "limit": int(configured_limit),
+                "utilization_pct": min(len(open_trades) / configured_limit * 100, 100),
+                "status": "available",
+                "source": "config.max_open_trades + trade_persistence",
+            }
+        else:
+            capacity = {
+                "used": len(open_trades),
+                "limit": None,
+                "utilization_pct": None,
+                "status": "partial",
+                "source": "trade_persistence",
+                "reason": "position limit is not configured",
+            }
+
+        nominal_exposure = {
+            "value": sum(abs(trade.amount * trade.open_rate) for trade in open_trades),
+            "status": "available",
+            "source": "trade_persistence.amount x open_rate",
+        }
+
+        today = dt_now().date()
+        tomorrow = today + timedelta(days=1)
+        today_profit = Trade.session.scalar(
+            select(func.sum(Trade.close_profit_abs)).filter(
+                Trade.is_open.is_(False),
+                Trade.close_date >= today,
+                Trade.close_date < tomorrow,
+            )
+        )
+        today_realized_profit = {
+            "value": float(today_profit or 0.0),
+            "status": "available",
+            "source": "trade_persistence.close_profit_abs",
+        }
+
+        recent_closed = Trade.session.scalars(
+            Trade.get_trades_query(Trade.is_open.is_(False), include_orders=False)
+            .order_by(Trade.close_date.desc())
+            .limit(101)
+        ).all()
+        consecutive_count = 0
+        consecutive_complete = True
+        for index, trade in enumerate(recent_closed):
+            if index == 100:
+                consecutive_complete = False
+                break
+            if trade.close_profit_abs is None:
+                consecutive_complete = False
+                break
+            if trade.close_profit_abs >= 0:
+                break
+            consecutive_count += 1
+        if recent_closed and recent_closed[0].close_date_utc:
+            event_timestamps.append(int(recent_closed[0].close_date_utc.timestamp() * 1000))
+        consecutive_losses = (
+            {
+                "value": consecutive_count,
+                "status": "available",
+                "source": "trade_persistence.close_profit_abs",
+            }
+            if consecutive_complete
+            else {
+                "value": None,
+                "status": "partial",
+                "source": "trade_persistence.close_profit_abs",
+                "reason": "available history does not prove the loss streak boundary",
+            }
+        )
+
+        metrics = [
+            current_drawdown,
+            max_drawdown,
+            max_drawdown_abs,
+            capacity,
+            nominal_exposure,
+            today_realized_profit,
+            consecutive_losses,
+        ]
+        snapshot_status = (
+            "available" if all(metric["status"] == "available" for metric in metrics) else "partial"
+        )
+        return {
+            "generated_timestamp": generated_timestamp,
+            "event_timestamp": max(event_timestamps) if event_timestamps else None,
+            "status": snapshot_status,
+            "current_drawdown": current_drawdown,
+            "max_drawdown": max_drawdown,
+            "max_drawdown_abs": max_drawdown_abs,
+            "position_capacity": capacity,
+            "nominal_exposure": nominal_exposure,
+            "today_realized_profit": today_realized_profit,
+            "consecutive_losses": consecutive_losses,
+            "active_locks": active_locks,
+            "locks_status": {
+                "status": "available",
+                "source": "pairlock_persistence",
+            },
+            "risk_limit": {
+                "status": "unconfigured",
+                "source": "config",
+                "reason": "no native portfolio risk-limit contract is configured",
+            },
+        }
+
+    def _rpc_decision_journal(self, limit: int, offset: int = 0) -> dict[str, Any]:
+        """Return a read-only journal derived from persisted trade and order state."""
+        generated_timestamp = dt_ts(dt_now())
+        trades = Trade.session.scalars(
+            Trade.get_trades_query()
+            .order_by(func.coalesce(Trade.close_date, Trade.open_date).desc(), Trade.id.desc())
+            .offset(offset)
+            .limit(limit)
+        ).all()
+        events: list[dict[str, Any]] = []
+
+        for trade in trades:
+            orders = sorted(
+                trade.orders,
+                key=lambda order: (
+                    order.order_filled_utc
+                    or order.order_date_utc
+                    or datetime.min.replace(tzinfo=UTC)
+                ),
+                reverse=True,
+            )
+            latest_order = orders[0] if orders else None
+            event_time = (
+                trade.close_date_utc
+                or (
+                    latest_order.order_filled_utc or latest_order.order_date_utc
+                    if latest_order
+                    else None
+                )
+                or trade.open_date_utc
+            )
+            stage = (
+                "exit"
+                if not trade.is_open
+                else "position"
+                if trade.nr_of_successful_entries > 0
+                else "entry"
+            )
+            result = (
+                trade.exit_reason or "closed"
+                if stage == "exit"
+                else "pending_order"
+                if trade.has_open_orders
+                else "open"
+            )
+            events.append(
+                {
+                    "id": f"trade:{trade.id}",
+                    "event_timestamp": int(event_time.timestamp() * 1000),
+                    "strategy": trade.strategy,
+                    "pair": trade.pair,
+                    "side": "short" if trade.is_short else "long",
+                    "stage": stage,
+                    "result": result,
+                    "enter_tag": trade.enter_tag,
+                    "signal_source": trade.enter_tag,
+                    "decision_reason": trade.exit_reason if stage == "exit" else None,
+                    "rejection_reason": None,
+                    "trade_id": trade.id,
+                    "order_id": latest_order.order_id if latest_order else None,
+                    "order_status": latest_order.status if latest_order else None,
+                    "order_side": latest_order.ft_order_side if latest_order else None,
+                    "open_rate": trade.open_rate,
+                    "close_rate": trade.close_rate,
+                    "profit_ratio": trade.close_profit,
+                    "profit_abs": trade.close_profit_abs,
+                    "source": "trade_persistence",
+                }
+            )
+
+        return {
+            "generated_timestamp": generated_timestamp,
+            "events": events,
+            "offset": offset,
+            "count": len(events),
+            "capabilities": {
+                "persisted_trade_events": {
+                    "status": "available",
+                    "source": "trade_persistence",
+                },
+                "signal_source": {
+                    "status": "partial",
+                    "source": "trade.enter_tag",
+                    "reason": "available only when the strategy persisted an enter tag",
+                },
+                "decision_reason": {
+                    "status": "partial",
+                    "source": "trade.exit_reason",
+                    "reason": "entry rationale is not persisted",
+                },
+                "rejected_or_unfilled_signals": {
+                    "status": "unavailable",
+                    "source": "trade_persistence",
+                    "reason": "signals without a persisted trade have no durable source",
+                },
+            },
+        }
+
+    def _rpc_execution_quality(self, trade_limit: int = 200) -> dict[str, Any]:
+        """Analyze persisted order execution facts without affecting trading."""
+        generated_timestamp = dt_ts(dt_now())
+        trades = Trade.session.scalars(
+            Trade.get_trades_query()
+            .order_by(func.coalesce(Trade.close_date, Trade.open_date).desc(), Trade.id.desc())
+            .limit(trade_limit)
+        ).all()
+
+        fee_totals: dict[str, float] = {}
+        fee_records = 0
+        latencies: list[int] = []
+        price_deviations: list[float] = []
+        lifecycle_counts = {"open": 0, "filled": 0, "cancelled": 0, "other": 0}
+        samples: list[dict[str, Any]] = []
+
+        for trade in trades:
+            for fee_cost, fee_currency in (
+                (trade.fee_open_cost, trade.fee_open_currency),
+                (trade.fee_close_cost, trade.fee_close_currency),
+            ):
+                if fee_cost is not None and fee_currency:
+                    fee_totals[fee_currency] = fee_totals.get(fee_currency, 0.0) + fee_cost
+                    fee_records += 1
+
+            for order in trade.orders:
+                status = (order.status or "").lower()
+                lifecycle = (
+                    "open"
+                    if order.ft_is_open
+                    else "filled"
+                    if status in {"closed", "filled"}
+                    else "cancelled"
+                    if "cancel" in status or order.ft_cancel_reason
+                    else "other"
+                )
+                lifecycle_counts[lifecycle] += 1
+
+                created = order.order_date_utc
+                filled = order.order_filled_utc
+                latency = (
+                    max(0, int((filled - created).total_seconds() * 1000))
+                    if created and filled
+                    else None
+                )
+                if latency is not None:
+                    latencies.append(latency)
+
+                requested_price = order.safe_placement_price
+                average_price = order.average
+                price_deviation = (
+                    abs((average_price / requested_price) - 1) * 10_000
+                    if requested_price and average_price
+                    else None
+                )
+                if price_deviation is not None:
+                    price_deviations.append(price_deviation)
+
+                event_time = filled or order.order_update_date or created
+                samples.append(
+                    {
+                        "id": f"trade:{trade.id}:order:{order.id}",
+                        "event_timestamp": dt_ts(event_time),
+                        "trade_id": trade.id,
+                        "order_id": order.order_id,
+                        "pair": trade.pair,
+                        "side": order.ft_order_side,
+                        "lifecycle": lifecycle,
+                        "created_timestamp": dt_ts(created),
+                        "filled_timestamp": dt_ts(filled) if filled else None,
+                        "fill_latency_ms": latency,
+                        "requested_price": requested_price,
+                        "average_price": average_price,
+                        "price_deviation_bps": price_deviation,
+                        "source": "order_persistence",
+                    }
+                )
+
+        samples.sort(key=lambda item: (item["event_timestamp"], item["id"]), reverse=True)
+        order_count = sum(lifecycle_counts.values())
+
+        def metric(value: float | None, source: str) -> dict[str, Any]:
+            return {
+                "status": "available" if value is not None else "unavailable",
+                "value": value,
+                "source": source,
+                "reason": (
+                    None if value is not None else "required persisted values are not available"
+                ),
+            }
+
+        sorted_latencies = sorted(latencies)
+        p95_index = max(0, ceil(len(sorted_latencies) * 0.95) - 1)
+        status = (
+            "unavailable"
+            if not trades
+            else "available"
+            if order_count and latencies and price_deviations and fee_records
+            else "partial"
+        )
+
+        return {
+            "mode": "read_only",
+            "affects_trading": False,
+            "generated_timestamp": generated_timestamp,
+            "event_timestamp": samples[0]["event_timestamp"] if samples else None,
+            "status": status,
+            "fee_totals": [
+                {
+                    "currency": currency,
+                    "value": value,
+                    "source": "trade_persistence",
+                }
+                for currency, value in sorted(fee_totals.items())
+            ],
+            "fee_status": {
+                "status": "available" if fee_records else "unavailable",
+                "source": "trade_persistence",
+                "reason": None
+                if fee_records
+                else "no persisted fee cost and currency pairs are available",
+            },
+            "average_fill_latency_ms": metric(
+                sum(latencies) / len(latencies) if latencies else None,
+                "order_persistence",
+            ),
+            "p95_fill_latency_ms": metric(
+                sorted_latencies[p95_index] if sorted_latencies else None,
+                "order_persistence",
+            ),
+            "average_price_deviation_bps": metric(
+                sum(price_deviations) / len(price_deviations) if price_deviations else None,
+                "order_persistence",
+            ),
+            "lifecycle": {"total": order_count, **lifecycle_counts},
+            "coverage": {
+                "sampled_trades": len(trades),
+                "sampled_orders": order_count,
+                "fee_records": fee_records,
+                "latency_records": len(latencies),
+                "price_deviation_records": len(price_deviations),
+            },
+            "recent_orders": samples[:20],
+            "capabilities": {
+                "local_fill_latency": {
+                    "status": "available" if latencies else "unavailable",
+                    "source": "order.order_date/order_filled_date",
+                    "reason": None
+                    if latencies
+                    else "paired order creation and fill timestamps are unavailable",
+                },
+                "requested_to_average_price_deviation": {
+                    "status": "available" if price_deviations else "unavailable",
+                    "source": "order.price/order.average",
+                    "reason": None
+                    if price_deviations
+                    else "paired requested and average fill prices are unavailable",
+                },
+                "exchange_ack_latency": {
+                    "status": "unavailable",
+                    "source": "order_persistence",
+                    "reason": "exchange acknowledgement timestamps are not persisted",
+                },
+                "decision_to_order_latency": {
+                    "status": "unavailable",
+                    "source": "order_persistence",
+                    "reason": "decision timestamps are not persisted",
+                },
+            },
+        }
+
+    def _rpc_strategy_governance(  # noqa: C901
+        self, backtest_results_dir: Path
+    ) -> dict[str, Any]:
+        """Return bounded validation evidence without changing or promoting a strategy."""
+        from freqtrade.data.btanalysis import get_latest_backtest_filename
+
+        generated_timestamp = dt_ts(dt_now())
+        strategy = self._freqtrade.strategy
+        identifier = self._freqtrade.config.get("strategy") or strategy.__class__.__name__
+        source_file = getattr(strategy, "__file__", None)
+        if not source_file:
+            try:
+                source_file = inspect.getsourcefile(strategy.__class__)
+            except (OSError, TypeError):
+                source_file = None
+        fingerprint = None
+        fingerprint_reason = None
+        if source_file:
+            try:
+                source_path = Path(source_file)
+                if source_path.is_file() and source_path.stat().st_size <= 2 * 1024 * 1024:
+                    fingerprint = hashlib.sha256(source_path.read_bytes()).hexdigest()
+                else:
+                    fingerprint_reason = "strategy source is unavailable or exceeds the 2 MiB limit"
+            except OSError:
+                fingerprint_reason = "strategy source is unavailable"
+        else:
+            fingerprint_reason = "strategy source location is unavailable"
+
+        def metric(data: dict[str, Any] | None, key: str, source: str) -> dict[str, Any]:
+            value = data.get(key) if data else None
+            if (
+                not isinstance(value, (int, float))
+                or isinstance(value, bool)
+                or not isfinite(float(value))
+            ):
+                value = None
+            return {
+                "value": value,
+                "status": "available" if value is not None else "unavailable",
+                "source": source,
+                "reason": None if value is not None else f"{key} is not recorded",
+            }
+
+        backtest: dict[str, Any] = {
+            "status": "not_recorded",
+            "source": "backtest_results/.last_result.json",
+            "reason": "no bounded latest backtest result is recorded for the active strategy",
+            "trade_count": metric(None, "total_trades", "backtest_result"),
+            "profit_ratio": metric(None, "profit_total", "backtest_result"),
+            "max_drawdown": metric(None, "max_drawdown", "backtest_result"),
+            "win_rate": metric(None, "win_rate", "backtest_result"),
+        }
+        max_result_size = 25 * 1024 * 1024
+        try:
+            latest_name = get_latest_backtest_filename(backtest_results_dir)
+            result_path = (backtest_results_dir / latest_name).resolve()
+            if result_path.suffix not in {".json", ".zip"} or not is_file_in_dir(
+                result_path, backtest_results_dir
+            ):
+                raise ValueError("latest backtest result is outside the configured directory")
+
+            if result_path.suffix == ".zip":
+                with ZipFile(result_path) as archive:
+                    member = archive.getinfo(result_path.with_suffix(".json").name)
+                    if member.file_size > max_result_size:
+                        raise ValueError("latest backtest result exceeds the 25 MiB limit")
+                    payload = archive.read(member)
+            else:
+                if result_path.stat().st_size > max_result_size:
+                    raise ValueError("latest backtest result exceeds the 25 MiB limit")
+                payload = result_path.read_bytes()
+            result = json.loads(payload)
+            strategy_data = result.get("strategy", {}).get(identifier)
+            metadata = result.get("metadata", {}).get(identifier, {})
+            if strategy_data:
+                total_trades = strategy_data.get("total_trades")
+                wins = strategy_data.get("wins")
+                win_rate = (
+                    wins / total_trades
+                    if wins is not None and total_trades not in (None, 0)
+                    else None
+                )
+                run_timestamp = metadata.get("backtest_start_time")
+                if isinstance(run_timestamp, (int, float)):
+                    run_timestamp = int(
+                        run_timestamp * 1000 if run_timestamp < 10_000_000_000 else run_timestamp
+                    )
+                else:
+                    run_timestamp = None
+                backtest_metrics = {
+                    "trade_count": metric(
+                        strategy_data, "total_trades", "backtest_result.total_trades"
+                    ),
+                    "profit_ratio": metric(
+                        strategy_data, "profit_total", "backtest_result.profit_total"
+                    ),
+                    "max_drawdown": metric(
+                        strategy_data, "max_drawdown", "backtest_result.max_drawdown"
+                    ),
+                    "win_rate": {
+                        "value": win_rate,
+                        "status": "available" if win_rate is not None else "unavailable",
+                        "source": "backtest_result.wins / total_trades",
+                        "reason": None
+                        if win_rate is not None
+                        else "wins or total_trades is not recorded",
+                    },
+                }
+                evidence_status = (
+                    "available"
+                    if all(item["status"] == "available" for item in backtest_metrics.values())
+                    else "partial"
+                )
+                backtest = {
+                    "status": evidence_status,
+                    "source": "bounded_latest_backtest_result",
+                    "reason": None
+                    if evidence_status == "available"
+                    else "latest result contains only partial recorded metrics",
+                    "result_file": result_path.name,
+                    "run_id": metadata.get("run_id"),
+                    "run_timestamp": run_timestamp,
+                    "sample_start_timestamp": strategy_data.get("backtest_start_ts"),
+                    "sample_end_timestamp": strategy_data.get("backtest_end_ts"),
+                    "timeframe": strategy_data.get("timeframe"),
+                    **backtest_metrics,
+                }
+        except (AttributeError, BadZipFile, KeyError, OSError, TypeError, ValueError):
+            logger.warning("Unable to load bounded latest backtest evidence")
+
+        gates = [
+            {
+                "id": "backtest",
+                "label": "历史回测",
+                "status": backtest["status"],
+                "source": backtest["source"],
+                "reason": backtest.get("reason"),
+            },
+            *[
+                {
+                    "id": gate_id,
+                    "label": label,
+                    "status": "not_recorded",
+                    "source": "governance_metadata",
+                    "reason": reason,
+                }
+                for gate_id, label, reason in (
+                    ("out_of_sample", "样本外验证", "no durable out-of-sample record exists"),
+                    ("stress_test", "压力测试", "no durable stress-test record exists"),
+                    (
+                        "paper_trading",
+                        "模拟盘验证",
+                        "no durable paper-trading approval record exists",
+                    ),
+                    (
+                        "limited_capital",
+                        "小资金灰度",
+                        "no durable limited-capital rollout record exists",
+                    ),
+                    ("human_approval", "人工批准", "no durable human approval record exists"),
+                    ("rollback_point", "回滚点", "no durable rollback point is recorded"),
+                )
+            ],
+        ]
+        return {
+            "mode": "read_only",
+            "affects_trading": False,
+            "promotion_allowed": False,
+            "generated_timestamp": generated_timestamp,
+            "status": "partial"
+            if fingerprint or backtest["status"] == "available"
+            else "unavailable",
+            "strategy": {
+                "identifier": identifier,
+                "class_name": strategy.__class__.__name__,
+                "version": strategy.version(),
+                "fingerprint": fingerprint,
+                "fingerprint_algorithm": "sha256" if fingerprint else None,
+                "fingerprint_status": {
+                    "status": "available" if fingerprint else "unavailable",
+                    "source": "active_strategy_source",
+                    "reason": fingerprint_reason,
+                },
+            },
+            "latest_backtest": backtest,
+            "gates": gates,
+            "capabilities": {
+                "automatic_promotion": {
+                    "status": "unavailable",
+                    "source": "strategy_governance",
+                    "reason": "this endpoint cannot publish, switch, or approve a strategy",
+                },
+                "performance_interpretation": {
+                    "status": "unavailable",
+                    "source": "strategy_governance",
+                    "reason": "backtest metrics are evidence only, not deployment eligibility",
+                },
+            },
+        }
+
+    def _rpc_system_observability(self, log_limit: int = 200) -> dict[str, Any]:
+        """Aggregate bounded runtime diagnostics without changing trading state."""
+        generated_timestamp = dt_ts(dt_now())
+        health = self.health()
+        last_process_ts = health["last_process_ts"]
+        bot_start_ts = health["bot_start_ts"]
+
+        def metric(value: float | None, source: str, reason: str) -> dict[str, Any]:
+            return {
+                "value": value,
+                "status": "available" if value is not None else "unavailable",
+                "source": source,
+                "reason": None if value is not None else reason,
+            }
+
+        heartbeat_age_ms = (
+            max(0, generated_timestamp - last_process_ts * 1000)
+            if isinstance(last_process_ts, int)
+            else None
+        )
+        uptime_ms = (
+            max(0, generated_timestamp - bot_start_ts * 1000)
+            if isinstance(bot_start_ts, int)
+            else None
+        )
+
+        db_reason = None
+        try:
+            Trade.session.scalar(select(1))
+            open_trade_count = Trade.session.scalar(
+                select(func.count(Trade.id)).filter(Trade.is_open.is_(True))
+            )
+            active_lock_count = PairLock.session.scalar(
+                select(func.count(PairLock.id)).filter(
+                    PairLock.active.is_(True),
+                    PairLock.lock_end_time > dt_now(),
+                )
+            )
+            database_available = True
+        except SQLAlchemyError:
+            logger.warning("Unable to query database observability metrics")
+            database_available = False
+            open_trade_count = None
+            active_lock_count = None
+            db_reason = "database diagnostics are unavailable"
+
+        cpu_values = psutil.cpu_percent(interval=None, percpu=True)
+        cpu_pct = sum(cpu_values) / len(cpu_values) if cpu_values else None
+        ram_pct = psutil.virtual_memory().percent
+        records = [
+            record
+            for record in bufferHandler.buffer[-log_limit:]
+            if hasattr(record, "levelname") and hasattr(record, "created")
+        ]
+        log_levels = {
+            level: len([record for record in records if record.levelname.upper() == level])
+            for level in ("CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG")
+        }
+        alerts = []
+        for level, severity, title in (
+            ("CRITICAL", "error", "日志窗口记录到 CRITICAL 事件"),
+            ("ERROR", "error", "日志窗口记录到 ERROR 事件"),
+            ("WARNING", "warning", "日志窗口记录到 WARNING 事件"),
+        ):
+            matching = [record for record in records if record.levelname.upper() == level]
+            if matching:
+                alerts.append(
+                    {
+                        "id": f"logs:{level.lower()}",
+                        "severity": severity,
+                        "title": title,
+                        "count": len(matching),
+                        "event_timestamp": int(max(record.created for record in matching) * 1000),
+                        "source": "bounded_log_buffer_levels",
+                    }
+                )
+        if heartbeat_age_ms is None:
+            alerts.append(
+                {
+                    "id": "runtime:heartbeat_missing",
+                    "severity": "warning",
+                    "title": "交易引擎尚无可用心跳时间",
+                    "count": 1,
+                    "event_timestamp": None,
+                    "source": "runtime.last_process",
+                }
+            )
+        if not database_available:
+            alerts.append(
+                {
+                    "id": "database:unavailable",
+                    "severity": "error",
+                    "title": "数据库诊断查询不可用",
+                    "count": 1,
+                    "event_timestamp": generated_timestamp,
+                    "source": "persistence",
+                }
+            )
+
+        runtime_state = getattr(self._freqtrade.state, "name", str(self._freqtrade.state))
+        return {
+            "mode": "read_only",
+            "affects_trading": False,
+            "generated_timestamp": generated_timestamp,
+            "status": "available"
+            if database_available and heartbeat_age_ms is not None
+            else "partial",
+            "runtime_state": runtime_state,
+            "heartbeat_age_ms": metric(
+                heartbeat_age_ms,
+                "runtime.last_process",
+                "the engine has not recorded a process timestamp",
+            ),
+            "uptime_ms": metric(
+                uptime_ms,
+                "key_value_store.bot_start_time",
+                "bot start time is not recorded",
+            ),
+            "database_status": {
+                "status": "available" if database_available else "unavailable",
+                "source": "persistence.select",
+                "reason": db_reason,
+            },
+            "open_trade_count": metric(
+                open_trade_count,
+                "trade_persistence",
+                "open trade count is unavailable",
+            ),
+            "active_lock_count": metric(
+                active_lock_count,
+                "pairlock_persistence",
+                "active lock count is unavailable",
+            ),
+            "active_pair_count": metric(
+                len(self._freqtrade.active_pair_whitelist),
+                "runtime.active_pair_whitelist",
+                "active pair whitelist is unavailable",
+            ),
+            "cpu_pct": metric(cpu_pct, "psutil.cpu_percent", "CPU telemetry is unavailable"),
+            "ram_pct": metric(ram_pct, "psutil.virtual_memory", "RAM telemetry is unavailable"),
+            "log_window": {
+                "requested_limit": log_limit,
+                "record_count": len(records),
+                "oldest_timestamp": int(records[0].created * 1000) if records else None,
+                "newest_timestamp": int(records[-1].created * 1000) if records else None,
+            },
+            "log_levels": log_levels,
+            "alerts": alerts,
+            "capabilities": {
+                "raw_log_messages": {
+                    "status": "unavailable",
+                    "source": "system_observability",
+                    "reason": "messages and stack traces are intentionally excluded",
+                },
+                "notification_delivery": {
+                    "status": "unavailable",
+                    "source": "system_observability",
+                    "reason": "this read-only endpoint does not send notifications",
+                },
+                "configured_alert_thresholds": {
+                    "status": "unconfigured",
+                    "source": "config",
+                    "reason": "no user-defined system alert thresholds are configured here",
+                },
+            },
+        }
+
+    def _rpc_market_observer(
+        self,
+        pair_limit: int = 12,
+        lookback_candles: int = 20,
+        timeframes: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Observe cached analyzed OHLCV data without changing strategy or execution state."""
+        requested_timestamp = dt_ts(dt_now())
+        configured_timeframe = self._freqtrade.config["timeframe"]
+        requested_timeframes = list(dict.fromkeys(timeframes or [configured_timeframe, "1h", "4h"]))
+        pairs = self._freqtrade.active_pair_whitelist[:pair_limit]
+        observations: list[dict[str, Any]] = []
+        event_timestamps: list[int] = []
+
+        for timeframe in requested_timeframes:
+            for pair in pairs:
+                try:
+                    dataframe, last_analyzed = self._freqtrade.dataprovider.get_analyzed_dataframe(
+                        pair, timeframe
+                    )
+                    window = dataframe.tail(lookback_candles)
+                    required_columns = {"close", "high", "low", "volume"}
+                    if len(window) < 2 or not required_columns.issubset(window.columns):
+                        observations.append(
+                            {
+                                "pair": pair,
+                                "timeframe": timeframe,
+                                "status": "unavailable",
+                                "freshness": "unavailable",
+                                "sample_count": len(window),
+                                "source": "dataprovider.analyzed_ohlcv_cache",
+                                "reason": "insufficient cached analyzed OHLCV data",
+                            }
+                        )
+                        continue
+
+                    candle_time = window["date"].iloc[-1] if "date" in window.columns else None
+                    if hasattr(candle_time, "to_pydatetime"):
+                        candle_time = candle_time.to_pydatetime()
+                    event_time = candle_time or last_analyzed
+                    if not isinstance(event_time, datetime):
+                        observations.append(
+                            {
+                                "pair": pair,
+                                "timeframe": timeframe,
+                                "status": "unavailable",
+                                "freshness": "unavailable",
+                                "sample_count": len(window),
+                                "source": "dataprovider.analyzed_ohlcv_cache",
+                                "reason": "cached candles do not expose an event time",
+                            }
+                        )
+                        continue
+                    if event_time.tzinfo is None:
+                        event_time = event_time.replace(tzinfo=UTC)
+
+                    first_close = float(window["close"].iloc[0])
+                    last_close = float(window["close"].iloc[-1])
+                    highest = float(window["high"].max())
+                    lowest = float(window["low"].min())
+                    latest_volume = float(window["volume"].iloc[-1])
+                    median_volume = float(window["volume"].median())
+                    event_timestamp = int(event_time.timestamp() * 1000)
+                    age_ms = max(0, requested_timestamp - event_timestamp)
+                    freshness = "fresh" if age_ms <= timeframe_to_msecs(timeframe) * 3 else "stale"
+                    event_timestamps.append(event_timestamp)
+                    observations.append(
+                        {
+                            "pair": pair,
+                            "timeframe": timeframe,
+                            "status": "available",
+                            "freshness": freshness,
+                            "event_timestamp": event_timestamp,
+                            "sample_count": len(window),
+                            "close": last_close,
+                            "change_pct": (
+                                (last_close / first_close - 1) * 100 if first_close else None
+                            ),
+                            "range_pct": (
+                                (highest - lowest) / last_close * 100 if last_close else None
+                            ),
+                            "volume": latest_volume,
+                            "volume_ratio": (
+                                latest_volume / median_volume if median_volume > 0 else None
+                            ),
+                            "source": "dataprovider.analyzed_ohlcv_cache",
+                        }
+                    )
+                except (KeyError, OperationalException, ValueError, RPCException):
+                    logger.warning(
+                        "Unable to build cached market observation for %s %s",
+                        pair,
+                        timeframe,
+                    )
+                    observations.append(
+                        {
+                            "pair": pair,
+                            "timeframe": timeframe,
+                            "status": "unavailable",
+                            "freshness": "unavailable",
+                            "sample_count": 0,
+                            "source": "dataprovider.analyzed_ohlcv_cache",
+                            "reason": "cached analyzed OHLCV data unavailable",
+                        }
+                    )
+
+        def breadth(items: list[dict[str, Any]]) -> dict[str, int]:
+            available_items = [item for item in items if item["status"] == "available"]
+            advancing = len([item for item in available_items if (item["change_pct"] or 0) > 0])
+            declining = len([item for item in available_items if (item["change_pct"] or 0) < 0])
+            return {
+                "observed": len(available_items),
+                "advancing": advancing,
+                "declining": declining,
+                "unchanged": len(available_items) - advancing - declining,
+                "unavailable": len(items) - len(available_items),
+            }
+
+        timeframe_summaries = []
+        for timeframe in requested_timeframes:
+            items = [item for item in observations if item["timeframe"] == timeframe]
+            available_items = [item for item in items if item["status"] == "available"]
+            fresh_count = len([item for item in available_items if item["freshness"] == "fresh"])
+            stale_count = len(available_items) - fresh_count
+            timeframe_summaries.append(
+                {
+                    "timeframe": timeframe,
+                    "requested_pairs": len(pairs),
+                    "available": len(available_items),
+                    "fresh": fresh_count,
+                    "stale": stale_count,
+                    "unavailable": len(items) - len(available_items),
+                    "coverage_pct": (len(available_items) / len(items) * 100 if items else 0),
+                    "breadth": breadth(items),
+                }
+            )
+
+        available = [item for item in observations if item["status"] == "available"]
+        fresh_count = len([item for item in available if item["freshness"] == "fresh"])
+        stale_count = len(available) - fresh_count
+        unavailable_count = len(observations) - len(available)
+        status = (
+            "available"
+            if available and unavailable_count == 0 and stale_count == 0
+            else "partial"
+            if available
+            else "unavailable"
+        )
+        generated_timestamp = dt_ts(dt_now())
+        return {
+            "mode": "observe_only",
+            "affects_trading": False,
+            "generated_timestamp": generated_timestamp,
+            "event_timestamp": max(event_timestamps) if event_timestamps else None,
+            "status": status,
+            "timeframe": requested_timeframes[0],
+            "lookback_candles": lookback_candles,
+            "pairs": observations,
+            "breadth": breadth(observations),
+            "timeframes": timeframe_summaries,
+            "health": {
+                "requested_timestamp": requested_timestamp,
+                "generated_timestamp": generated_timestamp,
+                "generation_duration_ms": generated_timestamp - requested_timestamp,
+                "requested_observations": len(observations),
+                "available": len(available),
+                "fresh": fresh_count,
+                "stale": stale_count,
+                "unavailable": unavailable_count,
+                "coverage_pct": (len(available) / len(observations) * 100 if observations else 0),
+            },
+            "capabilities": {
+                "ohlcv_observation": {
+                    "status": "available" if available else "unavailable",
+                    "source": "dataprovider.analyzed_ohlcv_cache",
+                },
+                "snapshot_history": {
+                    "status": "unavailable",
+                    "source": "market_observer",
+                    "reason": (
+                        "snapshots are not persisted; adding writes or a migration is out of scope"
+                    ),
+                },
+                "regime_classification": {
+                    "status": "unavailable",
+                    "source": "market_observer",
+                    "reason": "observe-only layer does not classify market regimes",
+                },
+                "execution_integration": {
+                    "status": "unavailable",
+                    "source": "market_observer",
+                    "reason": (
+                        "market observations are not connected to strategy selection or orders"
+                    ),
+                },
+            },
         }
 
     def _rpc_locks(self) -> dict[str, Any]:

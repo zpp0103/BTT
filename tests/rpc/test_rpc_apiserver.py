@@ -187,7 +187,7 @@ def test_api_ui_fallback(botclient, mocker):
     rc = client_get(client, "%2F%2F%2Fetc/passwd")
     assert rc.status_code == 200
     # Allow both fallback or real UI
-    assert "`freqtrade install-ui`" in rc.text or "<!DOCTYPE html>" in rc.text
+    assert "`freqtrade install-ui`" in rc.text or "<!doctype html>" in rc.text.lower()
 
     for test_string in ["%2F%2F%2Fetc/passwd", "assets%2F..%2F..%2F..%2Fdeps.py"]:
         with patch.object(Path, "is_file", MagicMock(side_effect=[True, False])):
@@ -226,7 +226,7 @@ def test_api_market_intelligence_unconfigured(botclient, mocker):
     assert payload["execution"] == {
         "mode": "observe_only",
         "status": "disabled",
-        "message": "第一版仅提供观察与建议；AI 不持有交易所密钥，也不能直接下单。",
+        "message": "第一版仅提供观察与建议；AI 不持有交易所密钥，也不能直接下单。",  # noqa: RUF001
     }
 
 
@@ -703,6 +703,113 @@ def test_api_locks(botclient):
     assert rc.json()["lock_count"] == 0
 
 
+def test_api_effective_risk_and_decision_journal(botclient):
+    _ftbot, client = botclient
+
+    risk = client_get(client, f"{BASE_URI}/effective_risk")
+    assert_response(risk)
+    assert risk.json()["today_realized_profit"]["value"] == 0
+    assert risk.json()["risk_limit"]["status"] == "unconfigured"
+    assert "jwt_secret_key" not in risk.text
+
+    journal = client_get(client, f"{BASE_URI}/decision_journal?limit=1")
+    assert_response(journal)
+    assert journal.json()["count"] == 0
+    assert journal.json()["capabilities"]["rejected_or_unfilled_signals"]["status"] == "unavailable"
+
+    invalid_limit = client_get(client, f"{BASE_URI}/decision_journal?limit=201")
+    assert_response(invalid_limit, 422)
+
+    unauthorized = client.get(f"{BASE_URI}/effective_risk")
+    assert_response(unauthorized, 401, needs_cors=False)
+
+
+def test_api_market_observer(botclient, mocker):
+    ftbot, client = botclient
+    ftbot.active_pair_whitelist = ["ETH/BTC"]
+    mocker.patch.object(
+        ftbot.dataprovider,
+        "get_analyzed_dataframe",
+        return_value=(
+            pd.DataFrame(
+                {
+                    "close": [100.0, 101.0],
+                    "high": [101.0, 102.0],
+                    "low": [99.0, 100.0],
+                    "volume": [10.0, 12.0],
+                }
+            ),
+            datetime.now(UTC),
+        ),
+    )
+
+    response = client_get(
+        client,
+        f"{BASE_URI}/market_observer?pair_limit=1&lookback_candles=2&timeframes=5m",
+    )
+    assert_response(response)
+    assert response.json()["mode"] == "observe_only"
+    assert response.json()["affects_trading"] is False
+    assert response.json()["breadth"]["observed"] == 1
+
+    invalid_limit = client_get(client, f"{BASE_URI}/market_observer?pair_limit=31")
+    assert_response(invalid_limit, 422)
+    invalid_timeframe = client_get(client, f"{BASE_URI}/market_observer?timeframes=invalid")
+    assert_response(invalid_timeframe, 422)
+
+
+def test_api_execution_quality(botclient):
+    _ftbot, client = botclient
+
+    response = client_get(client, f"{BASE_URI}/execution_quality?trade_limit=1")
+    assert_response(response)
+    assert response.json()["mode"] == "read_only"
+    assert response.json()["affects_trading"] is False
+    assert response.json()["status"] == "unavailable"
+    assert response.json()["fee_totals"] == []
+    assert "jwt_secret_key" not in response.text
+
+    invalid_limit = client_get(client, f"{BASE_URI}/execution_quality?trade_limit=1001")
+    assert_response(invalid_limit, 422)
+
+    unauthorized = client.get(f"{BASE_URI}/execution_quality")
+    assert_response(unauthorized, 401, needs_cors=False)
+
+
+def test_api_strategy_governance(botclient):
+    _ftbot, client = botclient
+
+    response = client_get(client, f"{BASE_URI}/strategy_governance")
+    assert_response(response)
+    assert response.json()["mode"] == "read_only"
+    assert response.json()["affects_trading"] is False
+    assert response.json()["promotion_allowed"] is False
+    assert response.json()["capabilities"]["automatic_promotion"]["status"] == "unavailable"
+    assert "jwt_secret_key" not in response.text
+
+    unauthorized = client.get(f"{BASE_URI}/strategy_governance")
+    assert_response(unauthorized, 401, needs_cors=False)
+
+
+def test_api_system_observability(botclient):
+    ftbot, client = botclient
+    ftbot.last_process = datetime.now(UTC)
+
+    response = client_get(client, f"{BASE_URI}/system_observability?log_limit=1")
+    assert_response(response)
+    assert response.json()["mode"] == "read_only"
+    assert response.json()["affects_trading"] is False
+    assert response.json()["log_window"]["requested_limit"] == 1
+    assert response.json()["capabilities"]["raw_log_messages"]["status"] == "unavailable"
+    assert "jwt_secret_key" not in response.text
+
+    invalid_limit = client_get(client, f"{BASE_URI}/system_observability?log_limit=501")
+    assert_response(invalid_limit, 422)
+
+    unauthorized = client.get(f"{BASE_URI}/system_observability")
+    assert_response(unauthorized, 401, needs_cors=False)
+
+
 def test_api_show_config(botclient):
     ftbot, client = botclient
     patch_get_signal(ftbot)
@@ -726,7 +833,7 @@ def test_api_show_config(botclient):
     assert "version" in response
     assert "api_version" in response
     assert "proxy_coin" not in response
-    assert 2.1 <= response["api_version"] < 3.0
+    assert response["api_version"] == 2.55
 
     # proxy_coin is only set when available
     ftbot.config["proxy_coin"] = "BNFCR"

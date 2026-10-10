@@ -5,6 +5,10 @@ import StateBlock from "@/components/StateBlock.vue";
 
 defineProps<{ module: string; data: DashboardData | null }>();
 
+const ratio = (value: number | null | undefined) => value == null ? "—" : `${(value * 100).toFixed(2)}%`;
+const governanceStatus = (value: string) => value === "available" ? "已记录" : value === "partial" ? "部分记录" : value === "not_recorded" ? "未记录" : "不可用";
+const shortFingerprint = (value: string | null | undefined) => value ? `${value.slice(0, 12)}…${value.slice(-8)}` : "不可用";
+
 const moduleInfo: Record<string, { kicker: string; title: string; desc: string; icon: string }> = {
   live: { kicker: "EXECUTION", title: "实时交易", desc: "观察策略执行、市场状态与交易信号", icon: "live" },
   strategies: { kicker: "STRATEGIES", title: "策略管理", desc: "管理策略版本、参数与运行实例", icon: "strategy" },
@@ -32,13 +36,27 @@ const moduleInfo: Record<string, { kicker: string; title: string; desc: string; 
       <article class="panel"><span class="section-label">SIGNALS</span><h2>实时信号</h2><StateBlock state="empty" title="等待策略信号" detail="信号流接入后将在此展示入场、出场与拒绝原因。" /></article>
     </div>
     <div v-else-if="module === 'strategies'" class="module-grid">
-      <article class="panel"><span class="section-label">ACTIVE</span><h2>当前策略</h2><div class="large-value">{{ data?.config?.strategy ?? "未加载" }}</div><p class="muted">{{ data?.config?.trading_mode ?? "—" }} · {{ data?.config?.exchange ?? "—" }}</p></article>
-      <article class="panel"><span class="section-label">LIFECYCLE</span><h2>策略版本</h2><StateBlock state="empty" title="暂无版本记录" detail="后续可接入策略列表与参数版本对比。" /></article>
+      <article class="panel"><span class="section-label">ACTIVE / READ ONLY</span><h2>当前策略</h2><div class="large-value">{{ data?.governance?.strategy.identifier ?? data?.config?.strategy ?? "未加载" }}</div><p class="muted">{{ data?.config?.trading_mode ?? "—" }} · {{ data?.config?.exchange ?? "—" }}</p></article>
+      <article class="panel"><span class="section-label">IDENTITY</span><h2>版本与指纹</h2><dl v-if="data?.governance" class="data-list"><div><dt>类名</dt><dd>{{ data.governance.strategy.class_name }}</dd></div><div><dt>策略版本</dt><dd>{{ data.governance.strategy.version ?? "未记录" }}</dd></div><div><dt>SHA-256</dt><dd class="mono">{{ shortFingerprint(data.governance.strategy.fingerprint) }}</dd></div></dl><StateBlock v-else state="empty" title="治理数据不可用" :detail="data?.governanceDegradationReason ?? '当前后端未提供策略治理端点。'" /></article>
     </div>
     <div v-else-if="module === 'backtest'" class="module-grid">
-      <article class="panel"><span class="section-label">LATEST RESULT</span><h2>最近回测</h2><StateBlock state="empty" title="暂无回测结果" detail="可通过现有 /backtest API 接入任务创建、进度与结果分析。" /></article>
-      <article class="panel"><span class="section-label">COMPARE</span><h2>策略对比</h2><StateBlock state="empty" title="等待对比样本" detail="选择多个回测结果后比较收益、回撤和稳定性。" /></article>
+      <article class="panel"><span class="section-label">LATEST EVIDENCE</span><h2>最近回测证据</h2><dl v-if="data?.governance && ['available', 'partial'].includes(data.governance.latest_backtest.status)" class="data-list"><div><dt>证据状态</dt><dd>{{ governanceStatus(data.governance.latest_backtest.status) }}</dd></div><div><dt>样本交易</dt><dd>{{ data.governance.latest_backtest.trade_count.value ?? "—" }}</dd></div><div><dt>收益</dt><dd>{{ ratio(data.governance.latest_backtest.profit_ratio.value) }}</dd></div><div><dt>最大回撤</dt><dd>{{ ratio(data.governance.latest_backtest.max_drawdown.value) }}</dd></div><div><dt>胜率</dt><dd>{{ ratio(data.governance.latest_backtest.win_rate.value) }}</dd></div></dl><StateBlock v-else state="empty" title="没有活动策略的回测证据" :detail="data?.governance?.latest_backtest.reason ?? data?.governanceDegradationReason ?? '当前后端未提供策略治理端点。'" /></article>
+      <article class="panel"><span class="section-label">INTERPRETATION</span><h2>证据边界</h2><StateBlock state="empty" title="不自动判定上线资格" :detail="data?.governance?.capabilities.performance_interpretation?.reason ?? '单次回测不能替代样本外、压力与实盘前验证。'" /></article>
     </div>
+    <article v-if="module === 'strategies' || module === 'backtest'" class="panel governance-panel">
+      <div class="panel-head"><div><span class="section-label">VALIDATION / PROMOTION GOVERNANCE</span><h2>验证与晋级治理</h2></div><span class="source-badge" :class="data?.governanceProvenance ?? 'unavailable'">{{ data?.governance ? "READ ONLY" : "UNAVAILABLE" }}</span></div>
+      <template v-if="data?.governance">
+        <div class="governance-gates">
+          <div v-for="gate in data.governance.gates" :key="gate.id" :class="gate.status">
+            <span>{{ gate.label }}</span>
+            <strong>{{ governanceStatus(gate.status) }}</strong>
+            <small>{{ gate.reason ?? gate.source }}</small>
+          </div>
+        </div>
+        <div class="observe-only-note"><strong>NO PROMOTION</strong><span>只读取策略身份与已有回测证据，不运行回测、不批准、不发布、不切换策略；{{ data.governance.capabilities.automatic_promotion?.reason }}</span></div>
+      </template>
+      <StateBlock v-else state="empty" title="验证治理不可用" :detail="data?.governanceDegradationReason ?? '当前后端未提供只读治理端点。'" />
+    </article>
     <div v-else-if="module === 'positions'" class="panel">
       <div class="panel-head"><div><span class="section-label">OPEN POSITIONS</span><h2>未平仓仓位</h2></div><span>{{ data?.openTrades.length ?? 0 }} 个</span></div>
       <div v-if="data?.openTrades.length" class="trade-table-wrap"><table><thead><tr><th>交易对</th><th>方向</th><th>策略</th><th>名义金额</th><th class="align-right">浮动盈亏</th></tr></thead><tbody><tr v-for="trade in data.openTrades" :key="trade.trade_id"><td><strong>{{ trade.pair }}</strong></td><td>{{ trade.is_short ? "SHORT" : "LONG" }}</td><td>{{ trade.strategy }}</td><td>{{ trade.stake_amount.toFixed(2) }}</td><td class="align-right" :class="(trade.total_profit_ratio ?? 0) < 0 ? 'loss' : 'profit'">{{ ((trade.total_profit_ratio ?? 0) * 100).toFixed(2) }}%</td></tr></tbody></table></div>
