@@ -117,6 +117,20 @@ uv pip install --python .venv/bin/python -e '.[develop]'
 .venv/bin/python scripts/btt-local.py check
 ```
 
+`cryptography==50.0.1` does not publish an Intel macOS (`x86_64`) wheel.
+On that platform, install its source-build prerequisites and expose Homebrew's
+keg-only OpenSSL before installing Python dependencies:
+
+``` bash
+brew install openssl@3 pkgconf rust
+export OPENSSL_DIR="$(brew --prefix openssl@3)"
+export PKG_CONFIG_PATH="${OPENSSL_DIR}/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+uv pip install --python .venv/bin/python -e '.[develop]'
+```
+
+The repository `setup.sh --install` path performs this setup automatically on
+Intel macOS. It does not change or relax the pinned `cryptography` version.
+
 Copy `.env.example` values into the shell or an untracked `.env` when ports or
 model settings need to change. Generate random local credentials and start
 webserver mode:

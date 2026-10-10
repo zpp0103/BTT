@@ -139,6 +139,13 @@ function install_macos() {
 
     brew install gettext libomp
 
+    if [ "$(uname -m)" == "x86_64" ]; then
+        # cryptography does not publish wheels for Intel macOS.
+        brew install openssl@3 pkgconf rust
+        export OPENSSL_DIR="$(brew --prefix openssl@3)"
+        export PKG_CONFIG_PATH="${OPENSSL_DIR}/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+    fi
+
     #Gets number after decimal in python version
     version=$(egrep -o 3.\[0-9\]+ <<< $PYTHON | sed 's/3.//g')
 }
