@@ -21,6 +21,8 @@ permissions: {}
 jobs:
   tests:
     name: "Tests and Linting"
+    permissions:
+      id-token: write
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -91,7 +93,7 @@ jobs:
       if: (runner.os == 'Linux' && matrix.python-version == '3.14' && matrix.os == 'ubuntu-24.04')
       with:
         fail_ci_if_error: true
-        token: ${{ secrets.CODECOV_TOKEN }}  # zizmor: ignore[secrets-outside-env] Intentionally not using environment variable.
+        use_oidc: true
 
     - name: Cleanup codecov dirty state files
       if: (runner.os == 'Linux' && matrix.python-version == '3.14' && matrix.os == 'ubuntu-24.04')
