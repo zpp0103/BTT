@@ -5,5 +5,7 @@ recursive-include freqtrade/templates/ *.j2 *.ipynb
 include freqtrade/exchange/binance_leverage_tiers.json
 include freqtrade/rpc/api_server/ui/fallback_file.html
 include freqtrade/rpc/api_server/ui/favicon.ico
+recursive-include freqtrade/rpc/api_server/ui/installed *
+include freqtrade/rpc/api_server/ui/installed/.uiversion
 
 prune tests

@@ -1,13 +1,17 @@
+import json
+import logging
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from unittest.mock import ANY, MagicMock, PropertyMock
 
+import pandas as pd
 import pytest
 from numpy import isnan
 from sqlalchemy import select
 
 from freqtrade.enums import SignalDirection, State, TradingMode
 from freqtrade.exceptions import ExchangeError, InvalidOrderException, TemporaryError
+from freqtrade.loggers import bufferHandler
 from freqtrade.persistence import Order, Trade
 from freqtrade.persistence.key_value_store import set_startup_time
 from freqtrade.rpc import RPC, RPCException
@@ -375,6 +379,246 @@ def test_rpc_trade_history(mocker, default_conf, markets, fee, is_short):
     # The first closed trade is for ETC ... sorting is descending
     assert trades["trades"][-1]["pair"] == "ETC/BTC"
     assert trades["trades"][0]["pair"] == "XRP/BTC"
+
+
+def test_rpc_effective_risk_snapshot(default_conf, mocker):
+    freqtradebot = get_patched_freqtradebot(mocker, default_conf)
+    rpc = RPC(freqtradebot)
+
+    result = rpc._rpc_effective_risk_snapshot(
+        default_conf["stake_currency"], default_conf["fiat_display_currency"]
+    )
+
+    assert result["status"] == "available"
+    assert result["generated_timestamp"] > 0
+    assert result["event_timestamp"] is None
+    assert result["current_drawdown"]["value"] == 0
+    assert result["current_drawdown"]["status"] == "available"
+    assert result["nominal_exposure"]["value"] == 0
+    assert result["today_realized_profit"]["value"] == 0
+    assert result["consecutive_losses"]["value"] == 0
+    assert result["locks_status"]["status"] == "available"
+    assert result["risk_limit"]["status"] == "unconfigured"
+    assert result["risk_limit"].get("value") is None
+
+
+def test_rpc_decision_journal(default_conf, markets, fee, mocker):
+    mocker.patch.multiple(EXMS, markets=PropertyMock(return_value=markets))
+    freqtradebot = get_patched_freqtradebot(mocker, default_conf)
+    create_mock_trades(fee)
+    rpc = RPC(freqtradebot)
+
+    first_page = rpc._rpc_decision_journal(limit=2)
+    second_page = rpc._rpc_decision_journal(limit=1, offset=1)
+
+    assert first_page["count"] == 2
+    assert first_page["events"][0]["event_timestamp"] >= first_page["events"][1]["event_timestamp"]
+    assert first_page["events"][0]["id"].startswith("trade:")
+    assert first_page["events"][0]["source"] == "trade_persistence"
+    assert second_page["events"][0]["id"] == first_page["events"][1]["id"]
+    assert first_page["capabilities"]["rejected_or_unfilled_signals"]["status"] == "unavailable"
+    assert "password" not in str(first_page).lower()
+
+
+def test_rpc_execution_quality(default_conf, markets, fee, mocker):
+    mocker.patch.multiple(EXMS, markets=PropertyMock(return_value=markets))
+    freqtradebot = get_patched_freqtradebot(mocker, default_conf)
+    create_mock_trades(fee)
+    trades = Trade.session.scalars(select(Trade)).all()
+    trade = trades[0]
+    order = trade.orders[0]
+    order.order_date = datetime(2024, 1, 1, 12, 0)
+    order.order_filled_date = datetime(2024, 1, 1, 12, 0, 2)
+    order.price = 100
+    order.average = 100.1
+    order.status = "closed"
+    order.ft_is_open = False
+    trade.fee_open_cost = 0
+    trade.fee_open_currency = "BTC"
+    Trade.commit()
+
+    result = RPC(freqtradebot)._rpc_execution_quality(trade_limit=20)
+
+    assert result["mode"] == "read_only"
+    assert result["affects_trading"] is False
+    assert result["status"] in {"available", "partial"}
+    assert result["fee_totals"][0] == {
+        "currency": "BTC",
+        "value": 0,
+        "source": "trade_persistence",
+    }
+    assert result["fee_status"]["status"] == "available"
+    assert result["average_fill_latency_ms"]["value"] > 0
+    assert result["average_price_deviation_bps"]["value"] > 0
+    sample = next(item for item in result["recent_orders"] if item["order_id"] == order.order_id)
+    assert sample["fill_latency_ms"] == 2000
+    assert sample["price_deviation_bps"] == pytest.approx(10)
+    assert sample["id"].startswith("trade:")
+    assert result["capabilities"]["exchange_ack_latency"]["status"] == "unavailable"
+    assert "secret" not in str(result).lower()
+
+
+def test_rpc_strategy_governance(default_conf, mocker, tmp_path):
+    freqtradebot = get_patched_freqtradebot(mocker, default_conf)
+    result_dir = tmp_path / "backtest_results"
+    result_dir.mkdir()
+    result_file = result_dir / "backtest-result-2026-01-01.json"
+    result_file.write_text(
+        json.dumps(
+            {
+                "metadata": {
+                    "StrategyTestV3": {
+                        "run_id": "stable-run",
+                        "backtest_start_time": 1_700_000_000,
+                    }
+                },
+                "strategy": {
+                    "StrategyTestV3": {
+                        "total_trades": 0,
+                        "profit_total": 0,
+                        "max_drawdown": 0,
+                        "wins": 0,
+                        "backtest_start_ts": 1_600_000_000_000,
+                        "backtest_end_ts": 1_610_000_000_000,
+                        "timeframe": "5m",
+                    }
+                },
+            }
+        )
+    )
+    (result_dir / ".last_result.json").write_text(json.dumps({"latest_backtest": result_file.name}))
+    rpc = RPC(freqtradebot)
+
+    result = rpc._rpc_strategy_governance(result_dir)
+    repeated = rpc._rpc_strategy_governance(result_dir)
+
+    assert result["mode"] == "read_only"
+    assert result["affects_trading"] is False
+    assert result["promotion_allowed"] is False
+    assert result["strategy"]["identifier"] == "StrategyTestV3"
+    assert result["strategy"]["fingerprint"] == repeated["strategy"]["fingerprint"]
+    assert len(result["strategy"]["fingerprint"]) == 64
+    assert result["latest_backtest"]["status"] == "partial"
+    assert result["latest_backtest"]["trade_count"]["value"] == 0
+    assert result["latest_backtest"]["profit_ratio"]["value"] == 0
+    assert result["latest_backtest"]["max_drawdown"]["value"] == 0
+    assert result["latest_backtest"]["win_rate"]["value"] is None
+    assert result["latest_backtest"]["win_rate"]["status"] == "unavailable"
+    assert result["gates"][1]["status"] == "not_recorded"
+    assert result["capabilities"]["automatic_promotion"]["status"] == "unavailable"
+
+    (result_dir / ".last_result.json").write_text(
+        json.dumps({"latest_backtest": "../../outside-secret.json"})
+    )
+    bounded = rpc._rpc_strategy_governance(result_dir)
+    assert bounded["latest_backtest"]["status"] == "not_recorded"
+    assert "outside-secret" not in str(bounded)
+
+
+def test_rpc_system_observability(default_conf, mocker):
+    freqtradebot = get_patched_freqtradebot(mocker, default_conf)
+    freqtradebot.last_process = datetime.now(UTC)
+    records = [
+        logging.LogRecord(
+            "freqtrade.test",
+            logging.ERROR,
+            __file__,
+            1,
+            "secret-token-must-not-leak",
+            (),
+            None,
+        ),
+        logging.LogRecord(
+            "freqtrade.test",
+            logging.WARNING,
+            __file__,
+            2,
+            "warning detail",
+            (),
+            None,
+        ),
+    ]
+    mocker.patch.object(bufferHandler, "buffer", records)
+
+    result = RPC(freqtradebot)._rpc_system_observability(log_limit=2)
+
+    assert result["mode"] == "read_only"
+    assert result["affects_trading"] is False
+    assert result["status"] == "available"
+    assert result["heartbeat_age_ms"]["value"] >= 0
+    assert result["database_status"]["status"] == "available"
+    assert result["open_trade_count"]["value"] == 0
+    assert result["log_levels"]["ERROR"] == 1
+    assert result["log_levels"]["WARNING"] == 1
+    assert [item["id"] for item in result["alerts"]] == ["logs:error", "logs:warning"]
+    assert result["capabilities"]["configured_alert_thresholds"]["status"] == "unconfigured"
+    assert "secret-token-must-not-leak" not in str(result)
+
+
+def test_rpc_market_observer(default_conf, mocker):
+    freqtradebot = get_patched_freqtradebot(mocker, default_conf)
+    freqtradebot.active_pair_whitelist = ["ETH/BTC"]
+    analyzed_at = datetime.now(UTC)
+    mocker.patch.object(
+        freqtradebot.dataprovider,
+        "get_analyzed_dataframe",
+        return_value=(
+            pd.DataFrame(
+                {
+                    "close": [100.0, 102.0],
+                    "high": [101.0, 103.0],
+                    "low": [99.0, 100.0],
+                    "volume": [10.0, 20.0],
+                }
+            ),
+            analyzed_at,
+        ),
+    )
+    rpc = RPC(freqtradebot)
+
+    result = rpc._rpc_market_observer(pair_limit=1, lookback_candles=2)
+
+    assert result["mode"] == "observe_only"
+    assert result["affects_trading"] is False
+    assert result["status"] == "available"
+    assert result["breadth"] == {
+        "observed": 3,
+        "advancing": 3,
+        "declining": 0,
+        "unchanged": 0,
+        "unavailable": 0,
+    }
+    assert result["pairs"][0]["change_pct"] == pytest.approx(2.0)
+    assert result["health"]["coverage_pct"] == 100
+    assert len(result["timeframes"]) == 3
+    assert result["capabilities"]["execution_integration"]["status"] == "unavailable"
+    assert result["capabilities"]["snapshot_history"]["status"] == "unavailable"
+
+    def partial_dataframe(_pair, timeframe):
+        if timeframe == "1h":
+            return pd.DataFrame(), analyzed_at
+        if timeframe == "4h":
+            raise ValueError("missing cache")
+        return (
+            pd.DataFrame(
+                {
+                    "close": [100.0, 102.0],
+                    "high": [101.0, 103.0],
+                    "low": [99.0, 100.0],
+                    "volume": [10.0, 20.0],
+                }
+            ),
+            analyzed_at,
+        )
+
+    freqtradebot.dataprovider.get_analyzed_dataframe.side_effect = partial_dataframe
+    partial = rpc._rpc_market_observer(
+        pair_limit=1, lookback_candles=2, timeframes=["5m", "1h", "4h"]
+    )
+    assert partial["status"] == "partial"
+    assert partial["health"]["available"] == 1
+    assert partial["health"]["unavailable"] == 2
+    assert partial["timeframes"][1]["coverage_pct"] == 0
 
 
 @pytest.mark.parametrize("is_short", [True, False])

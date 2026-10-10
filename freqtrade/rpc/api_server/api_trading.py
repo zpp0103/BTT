@@ -11,9 +11,12 @@ from freqtrade.rpc.api_server.api_schemas import (
     BlacklistResponse,
     Count,
     DailyWeeklyMonthly,
+    DecisionJournal,
     DeleteLockRequest,
     DeleteTrade,
+    EffectiveRiskSnapshot,
     Entry,
+    ExecutionQualitySnapshot,
     Exit,
     ForceEnterPayload,
     ForceEnterResponse,
@@ -21,6 +24,8 @@ from freqtrade.rpc.api_server.api_schemas import (
     ListCustomData,
     Locks,
     LocksPayload,
+    MarketObserverSnapshot,
+    MarketObserverTimeframe,
     MixTag,
     OpenTradeSchema,
     PairCandlesRequest,
@@ -31,6 +36,8 @@ from freqtrade.rpc.api_server.api_schemas import (
     ResultMsg,
     Stats,
     StatusMsg,
+    StrategyGovernanceSnapshot,
+    SystemObservabilitySnapshot,
     WalletHistoryResponse,
     WhitelistResponse,
 )
@@ -98,6 +105,81 @@ def profit_all(rpc: RPC = Depends(get_rpc), config=Depends(get_config)):
         )
 
     return response
+
+
+@router.get(
+    "/effective_risk",
+    response_model=EffectiveRiskSnapshot,
+    tags=["Trading-info", "Risk"],
+)
+def effective_risk(rpc: RPC = Depends(get_rpc), config=Depends(get_config)):
+    return rpc._rpc_effective_risk_snapshot(
+        config["stake_currency"], config.get("fiat_display_currency", "")
+    )
+
+
+@router.get(
+    "/decision_journal",
+    response_model=DecisionJournal,
+    tags=["Trading-info", "Trades"],
+)
+def decision_journal(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0, le=10_000),
+    rpc: RPC = Depends(get_rpc),
+):
+    return rpc._rpc_decision_journal(limit=limit, offset=offset)
+
+
+@router.get(
+    "/market_observer",
+    response_model=MarketObserverSnapshot,
+    tags=["Trading-info", "Candle data"],
+)
+def market_observer(
+    pair_limit: int = Query(12, ge=1, le=30),
+    lookback_candles: int = Query(20, ge=2, le=100),
+    timeframes: list[MarketObserverTimeframe] | None = Query(None, max_length=4),
+    rpc: RPC = Depends(get_rpc),
+):
+    return rpc._rpc_market_observer(
+        pair_limit=pair_limit,
+        lookback_candles=lookback_candles,
+        timeframes=timeframes,
+    )
+
+
+@router.get(
+    "/execution_quality",
+    response_model=ExecutionQualitySnapshot,
+    tags=["Trading-info", "Trades"],
+)
+def execution_quality(
+    trade_limit: int = Query(200, ge=1, le=1_000),
+    rpc: RPC = Depends(get_rpc),
+):
+    return rpc._rpc_execution_quality(trade_limit=trade_limit)
+
+
+@router.get(
+    "/strategy_governance",
+    response_model=StrategyGovernanceSnapshot,
+    tags=["Trading-info", "Strategy"],
+)
+def strategy_governance(rpc: RPC = Depends(get_rpc), config=Depends(get_config)):
+    return rpc._rpc_strategy_governance(config["user_data_dir"] / "backtest_results")
+
+
+@router.get(
+    "/system_observability",
+    response_model=SystemObservabilitySnapshot,
+    tags=["Trading-info", "Info"],
+)
+def system_observability(
+    log_limit: int = Query(200, ge=1, le=500),
+    rpc: RPC = Depends(get_rpc),
+):
+    return rpc._rpc_system_observability(log_limit=log_limit)
 
 
 @router.get("/stats", response_model=Stats, tags=["Trading-info"])

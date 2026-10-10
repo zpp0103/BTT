@@ -72,7 +72,12 @@ logger = logging.getLogger(__name__)
 # 2.48: Add /backtest/history/wallets endpoint
 # 2.49: Add /lookahead_analysis and /recursive_analysis endpoints and background job deletion
 # 2.50: Updated supported timerange to include hour/minute precision.
-API_VERSION = 2.50
+# 2.51: Add read-only effective risk snapshot and decision journal.
+# 2.52: Add observe-only market snapshot.
+# 2.53: Add read-only execution quality analysis.
+# 2.54: Add read-only strategy validation governance.
+# 2.55: Add read-only system observability snapshot.
+API_VERSION = 2.55
 
 # Public API, requires no auth.
 router_public = APIRouter()
