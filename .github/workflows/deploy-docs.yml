@@ -39,7 +39,16 @@ jobs:
 
       - name: Fetch gh-pages branch
         run: |
-          git fetch origin gh-pages --depth=1
+          if git ls-remote --exit-code --heads origin gh-pages > /dev/null; then
+            git fetch origin gh-pages --depth=1
+          else
+            status=$?
+            if [ "$status" -eq 2 ]; then
+              echo "gh-pages does not exist yet; mike will create it on first deployment."
+            else
+              exit "$status"
+            fi
+          fi
 
       - name: Configure Git user
         run: |
